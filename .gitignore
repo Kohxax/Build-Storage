@@ -1,0 +1,24 @@
+# Gradle
+.gradle/
+build/
+*/build/
+*/.gradle/
+
+# Gradle wrapper jar (binary - user must run `gradle wrapper` to generate)
+*/gradle/wrapper/gradle-wrapper.jar
+
+# IntelliJ IDEA
+.idea/
+*.iml
+
+# Eclipse
+.classpath
+.project
+.settings/
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
