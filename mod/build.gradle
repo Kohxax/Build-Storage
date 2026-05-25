@@ -1,0 +1,38 @@
+plugins {
+    id 'fabric-loom' version '1.9-SNAPSHOT'
+    id 'java'
+}
+
+version = '1.0.0'
+group = 'dev.buildassist'
+
+base { archivesName = 'buildassist-mod' }
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://maven.fabricmc.net/' }
+}
+
+loom {
+    mixin.defaultRefmapName = 'buildassist.refmap.json'
+}
+
+dependencies {
+    minecraft 'com.mojang:minecraft:1.21.4'
+    mappings 'net.fabricmc:yarn:1.21.4+build.8:v2'
+    modImplementation 'net.fabricmc:fabric-loader:0.16.10'
+    modImplementation 'net.fabricmc.fabric-api:fabric-api:0.115.1+1.21.4'
+
+    // Gson for config serialization
+    implementation 'com.google.code.gson:gson:2.11.0'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+    withSourcesJar()
+}
+
+jar {
+    from('LICENSE') { rename { "${it}_${base.archivesName.get()}" } }
+}
