@@ -18,9 +18,11 @@ public class BuildAssistPlugin extends JavaPlugin {
 
         storageManager = new StorageManager(database);
 
-        getServer().getPluginManager().registerEvents(new StorageMenuListener(storageManager), this);
-
+        StorageMenuListener menuListener = new StorageMenuListener(storageManager);
         PluginMessaging messaging = new PluginMessaging(this, storageManager);
+        menuListener.setMessaging(messaging);
+
+        getServer().getPluginManager().registerEvents(menuListener, this);
         messaging.register();
 
         getLogger().info("BuildAssist enabled.");
@@ -34,11 +36,6 @@ public class BuildAssistPlugin extends JavaPlugin {
         getLogger().info("BuildAssist disabled.");
     }
 
-    public StorageDatabase getDatabase() {
-        return database;
-    }
-
-    public StorageManager getStorageManager() {
-        return storageManager;
-    }
+    public StorageDatabase getDatabase() { return database; }
+    public StorageManager getStorageManager() { return storageManager; }
 }
