@@ -22,13 +22,26 @@ public class ModMessaging {
     }
 
     public static void sendOpenStorage() {
+        send("open_storage", "{}");
+    }
+
+    public static void sendWithdraw(String itemKey, int amount) {
+        send("withdraw", "{\"item\":\"" + itemKey + "\",\"amount\":" + amount + "}");
+    }
+
+    public static void sendDeposit(String itemKey, int amount) {
+        send("deposit", "{\"item\":\"" + itemKey + "\",\"amount\":" + amount + "}");
+    }
+
+    private static void send(String packetId, String json) {
         try {
             ByteArrayOutputStream buf = new ByteArrayOutputStream();
             DataOutputStream out = new DataOutputStream(buf);
-            out.writeUTF("open_storage");
+            out.writeUTF(packetId);
+            out.writeUTF(json);
             ClientPlayNetworking.send(new StoragePayload(buf.toByteArray()));
         } catch (IOException e) {
-            BuildAssistMod.LOGGER.error("Failed to send open_storage packet", e);
+            BuildAssistMod.LOGGER.error("Failed to send packet '{}'", packetId, e);
         }
     }
 
