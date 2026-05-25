@@ -57,14 +57,8 @@ public class StoragePanelHandler {
         return result;
     }
 
-    // Withdraw one stack from the server storage
-    public void withdraw(String itemKey, int amount) {
-        // Send withdraw request via plugin messaging
-        // The actual packet is open_storage for now; a dedicated withdraw packet
-        // will be added when the server-side supports it.
-        // For Phase 3, we defer to the server's open_storage+click flow.
-        // TODO: add withdraw packet in Phase 5 integration
-        ModMessaging.sendWithdraw(itemKey, amount);
+    public void withdraw(String itemKey, int amount, boolean shift) {
+        ModMessaging.sendWithdraw(itemKey, amount, shift);
     }
 
     // Deposit the player's current held item into storage

@@ -11,6 +11,7 @@ import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
+import org.lwjgl.glfw.GLFW;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.client.input.CharInput;
 import net.minecraft.client.input.KeyInput;
@@ -35,12 +36,18 @@ public class StoragePanel {
     private static final int TAB_HEIGHT = 14;
     private static final int SEARCH_HEIGHT = 14;
 
-    // Colors
-    private static final int BG_COLOR       = 0xCC1A1A1A;
-    private static final int BORDER_COLOR   = 0xFF555555;
-    private static final int TAB_ACTIVE     = 0xCC333333;
-    private static final int TAB_INACTIVE   = 0xCC222222;
-    private static final int HOVER_COLOR    = 0x44FFFFFF;
+    // Vanilla GUI palette
+    private static final int BG_COLOR       = 0xFFC6C6C6;  // light gray panel fill
+    private static final int BORDER_DARK    = 0xFF373737;  // outer dark edge
+    private static final int BEVEL_LIGHT    = 0xFFFFFFFF;  // top/left inner bevel
+    private static final int BEVEL_SHADOW   = 0xFF555555;  // bottom/right inner bevel
+    private static final int SLOT_BG        = 0xFF8B8B8B;  // slot interior
+    private static final int SLOT_DARK      = 0xFF373737;  // slot top/left (sunken)
+    private static final int SLOT_LIGHT     = 0xFFFFFFFF;  // slot bottom/right (sunken)
+    private static final int TAB_ACTIVE     = 0xFFC6C6C6;  // active tab blends into panel
+    private static final int TAB_INACTIVE   = 0xFF8B8B8B;  // inactive tab darker
+    private static final int SEARCH_BG      = 0xFF3B3B3B;  // search field bg (dark)
+    private static final int HOVER_COLOR    = 0x80FFFFFF;  // slot hover overlay
 
     private final StorageCache cache;
     private final BuildAssistConfig config;
@@ -147,19 +154,19 @@ public class StoragePanel {
     public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
         int contentStartY = panelY + TAB_HEIGHT + SEARCH_HEIGHT + 6;
 
-        // Background
-        ctx.fill(panelX, panelY, panelX + PANEL_WIDTH, panelY + PANEL_HEIGHT, BG_COLOR);
-        // Border (drawBorder removed in 1.21.11, draw 4 sides manually)
-        ctx.fill(panelX, panelY, panelX + PANEL_WIDTH, panelY + 1, BORDER_COLOR);
-        ctx.fill(panelX, panelY + PANEL_HEIGHT - 1, panelX + PANEL_WIDTH, panelY + PANEL_HEIGHT, BORDER_COLOR);
-        ctx.fill(panelX, panelY, panelX + 1, panelY + PANEL_HEIGHT, BORDER_COLOR);
-        ctx.fill(panelX + PANEL_WIDTH - 1, panelY, panelX + PANEL_WIDTH, panelY + PANEL_HEIGHT, BORDER_COLOR);
+        // Raised panel background
+        drawRaisedPanel(ctx, panelX, panelY, PANEL_WIDTH, PANEL_HEIGHT);
 
         // Tab bar
         renderTabs(ctx, mouseX, mouseY);
 
-        // Search field background
-        ctx.fill(panelX + 3, panelY + TAB_HEIGHT + 1, panelX + PANEL_WIDTH - 3, panelY + TAB_HEIGHT + SEARCH_HEIGHT + 3, 0xFF111111);
+        // Search field: sunken inset
+        int sfX = panelX + 4;
+        int sfY = panelY + TAB_HEIGHT + 2;
+        int sfW = PANEL_WIDTH - 8;
+        int sfH = SEARCH_HEIGHT + 2;
+        drawSunkenSlot(ctx, sfX, sfY, sfW, sfH);
+        ctx.fill(sfX + 1, sfY + 1, sfX + sfW - 1, sfY + sfH - 1, SEARCH_BG);
         searchField.render(ctx, mouseX, mouseY, delta);
 
         // Item grid
@@ -167,13 +174,15 @@ public class StoragePanel {
         int firstSlot = scrollOffset * COLS;
         for (int i = 0; i < VISIBLE_ROWS * COLS; i++) {
             int slotIndex = firstSlot + i;
-            if (slotIndex >= currentSlots.size()) break;
-
             int col = i % COLS;
             int row = i / COLS;
             int sx = panelX + 5 + col * SLOT_SIZE;
             int sy = contentStartY + row * SLOT_SIZE;
 
+            // Always draw slot background
+            drawSunkenSlot(ctx, sx - 1, sy - 1, SLOT_SIZE, SLOT_SIZE);
+
+            if (slotIndex >= currentSlots.size()) continue;
             StoragePanelHandler.SlotEntry entry = currentSlots.get(slotIndex);
 
             // Hover highlight
@@ -205,16 +214,45 @@ public class StoragePanel {
         renderScrollbar(ctx, contentStartY);
     }
 
+    private void drawRaisedPanel(DrawContext ctx, int x, int y, int w, int h) {
+        // Outer dark edge
+        ctx.fill(x,         y,         x + w,     y + 1,     BORDER_DARK);
+        ctx.fill(x,         y + h - 1, x + w,     y + h,     BORDER_DARK);
+        ctx.fill(x,         y,         x + 1,     y + h,     BORDER_DARK);
+        ctx.fill(x + w - 1, y,         x + w,     y + h,     BORDER_DARK);
+        // Inner bevel
+        ctx.fill(x + 1,     y + 1,     x + w - 1, y + 2,     BEVEL_LIGHT);
+        ctx.fill(x + 1,     y + 1,     x + 2,     y + h - 1, BEVEL_LIGHT);
+        ctx.fill(x + 1,     y + h - 2, x + w - 1, y + h - 1, BEVEL_SHADOW);
+        ctx.fill(x + w - 2, y + 1,     x + w - 1, y + h - 1, BEVEL_SHADOW);
+        // Fill
+        ctx.fill(x + 2, y + 2, x + w - 2, y + h - 2, BG_COLOR);
+    }
+
+    private void drawSunkenSlot(DrawContext ctx, int x, int y, int w, int h) {
+        ctx.fill(x,         y,         x + w,     y + h,     SLOT_BG);
+        ctx.fill(x,         y,         x + w,     y + 1,     SLOT_DARK);
+        ctx.fill(x,         y,         x + 1,     y + h,     SLOT_DARK);
+        ctx.fill(x,         y + h - 1, x + w,     y + h,     SLOT_LIGHT);
+        ctx.fill(x + w - 1, y,         x + w,     y + h,     SLOT_LIGHT);
+    }
+
     private void renderTabs(DrawContext ctx, int mouseX, int mouseY) {
         int tabWidth = PANEL_WIDTH / tabKeys.size();
+        TextRenderer font = MinecraftClient.getInstance().textRenderer;
         for (int i = 0; i < tabKeys.size(); i++) {
             int tx = panelX + i * tabWidth;
-            int color = (i == currentTabIndex) ? TAB_ACTIVE : TAB_INACTIVE;
+            boolean active = (i == currentTabIndex);
+            int color = active ? TAB_ACTIVE : TAB_INACTIVE;
+            // Tab background
             ctx.fill(tx, panelY, tx + tabWidth - 1, panelY + TAB_HEIGHT, color);
-            // Tab number label (tab icons would need texture rendering)
+            // Top/left bevel for raised look
+            ctx.fill(tx,             panelY,     tx + tabWidth - 1, panelY + 1,     active ? BEVEL_LIGHT : BORDER_DARK);
+            ctx.fill(tx,             panelY,     tx + 1,            panelY + TAB_HEIGHT, active ? BEVEL_LIGHT : BORDER_DARK);
+            // Number label
             String label = String.valueOf(i + 1);
-            TextRenderer font = MinecraftClient.getInstance().textRenderer;
-            ctx.drawText(font, label, tx + tabWidth / 2 - font.getWidth(label) / 2, panelY + 3, 0xFFAAAAAA, false);
+            int labelColor = active ? 0xFF404040 : 0xFFDDDDDD;
+            ctx.drawText(font, label, tx + tabWidth / 2 - font.getWidth(label) / 2, panelY + 3, labelColor, false);
         }
     }
 
@@ -232,15 +270,21 @@ public class StoragePanel {
     }
 
     public boolean mouseClicked(Click click, boolean consumed) {
-        if (searchField.mouseClicked(click, consumed)) return true;
-
         double mouseX = click.x();
         double mouseY = click.y();
         int button = click.button();
 
+        // If outside the panel, unfocus search field and let vanilla handle it
+        if (mouseX < panelX || mouseX >= panelX + PANEL_WIDTH || mouseY < panelY || mouseY >= panelY + PANEL_HEIGHT) {
+            searchField.setFocused(false);
+            return false;
+        }
+
+        if (searchField.mouseClicked(click, consumed)) return true;
+
         // Tab click
         int tabWidth = PANEL_WIDTH / tabKeys.size();
-        if (mouseY >= panelY && mouseY < panelY + TAB_HEIGHT && mouseX >= panelX && mouseX < panelX + PANEL_WIDTH) {
+        if (mouseY >= panelY && mouseY < panelY + TAB_HEIGHT) {
             int idx = (int) ((mouseX - panelX) / tabWidth);
             if (idx >= 0 && idx < tabKeys.size()) {
                 currentTabIndex = idx;
@@ -254,12 +298,15 @@ public class StoragePanel {
         if (hoveredSlot >= 0 && hoveredSlot < currentSlots.size()) {
             StoragePanelHandler.SlotEntry entry = currentSlots.get(hoveredSlot);
             if (entry.isOwned()) {
+                long win = MinecraftClient.getInstance().getWindow().getHandle();
+                boolean shift = GLFW.glfwGetKey(win, GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS
+                             || GLFW.glfwGetKey(win, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS;
                 int amount = switch (button) {
-                    case 0 -> entry.displayStack.getItem().getMaxCount(); // left: full stack
-                    case 1 -> Math.max(1, entry.displayStack.getItem().getMaxCount() / 2); // right: half
+                    case 0 -> entry.displayStack.getItem().getMaxCount();
+                    case 1 -> Math.max(1, entry.displayStack.getItem().getMaxCount() / 2);
                     default -> 1;
                 };
-                ModMessaging.sendWithdraw(entry.itemKey, (int) Math.min(amount, entry.count));
+                ModMessaging.sendWithdraw(entry.itemKey, (int) Math.min(amount, entry.count), shift);
             }
             return true;
         }

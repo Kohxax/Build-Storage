@@ -1,13 +1,17 @@
 package dev.buildassist.plugin.network;
 
+import dev.buildassist.plugin.db.StorageItem;
 import dev.buildassist.plugin.menu.StorageMenu;
 import dev.buildassist.plugin.storage.PlayerStorage;
 import dev.buildassist.plugin.storage.StorageManager;
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.messaging.PluginMessageListener;
+
+import java.util.List;
 
 import java.io.*;
 
@@ -57,6 +61,7 @@ public class PluginMessaging implements PluginMessageListener {
         try {
             String itemKey = extractJsonString(json, "item");
             int amount = extractJsonInt(json, "amount");
+            boolean shift = extractJsonBoolean(json, "shift");
             if (itemKey == null || amount <= 0) return;
 
             PlayerStorage storage = storageManager.get(player);
@@ -65,12 +70,43 @@ public class PluginMessaging implements PluginMessageListener {
 
             int maxStack = mat.getMaxStackSize();
             int remaining = amount;
-            while (remaining > 0) {
-                int batch = Math.min(maxStack, remaining);
-                if (!storage.withdraw(itemKey, null, batch)) break;
-                player.getInventory().addItem(new ItemStack(mat, batch))
-                    .forEach((s, leftover) -> player.getWorld().dropItemNaturally(player.getLocation(), leftover));
-                remaining -= batch;
+
+            // Iterate all storage entries for this item (covers all NBT variants)
+            List<StorageItem> allItems = storage.getAll();
+            for (StorageItem si : allItems) {
+                if (remaining <= 0) break;
+                if (!si.getItemKey().equals(itemKey)) continue;
+
+                long take = Math.min(remaining, si.getCount());
+                if (!storage.withdraw(itemKey, si.getNbtData(), take)) continue;
+
+                int left = (int) take;
+                while (left > 0) {
+                    int batch = Math.min(maxStack, left);
+                    ItemStack item = new ItemStack(mat, batch);
+                    if (si.getNbtData() != null) {
+                        item = Bukkit.getUnsafe().modifyItemStack(item, si.getNbtData());
+                        item.setAmount(batch);
+                    }
+                    if (shift) {
+                        player.getInventory().addItem(item)
+                            .forEach((s, leftover) -> player.getWorld().dropItemNaturally(player.getLocation(), leftover));
+                    } else {
+                        // Place on cursor like vanilla left-click
+                        ItemStack cursor = player.getItemOnCursor();
+                        if (cursor == null || cursor.getType().isAir()) {
+                            player.setItemOnCursor(item);
+                        } else if (cursor.isSimilar(item) && cursor.getAmount() + batch <= maxStack) {
+                            cursor.setAmount(cursor.getAmount() + batch);
+                            player.setItemOnCursor(cursor);
+                        } else {
+                            player.getInventory().addItem(item)
+                                .forEach((s, leftover) -> player.getWorld().dropItemNaturally(player.getLocation(), leftover));
+                        }
+                    }
+                    left -= batch;
+                }
+                remaining -= (int) take;
             }
             sendStorageUpdate(player, storage);
         } catch (Exception e) {
@@ -137,5 +173,13 @@ public class PluginMessaging implements PluginMessageListener {
         int end = start;
         while (end < json.length() && (Character.isDigit(json.charAt(end)) || json.charAt(end) == '-')) end++;
         try { return Integer.parseInt(json.substring(start, end)); } catch (NumberFormatException e) { return 0; }
+    }
+
+    private static boolean extractJsonBoolean(String json, String key) {
+        String search = "\"" + key + "\":";
+        int start = json.indexOf(search);
+        if (start < 0) return false;
+        start += search.length();
+        return json.startsWith("true", start);
     }
 }

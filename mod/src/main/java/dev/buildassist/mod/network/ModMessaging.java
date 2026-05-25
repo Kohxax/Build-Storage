@@ -25,8 +25,8 @@ public class ModMessaging {
         send("open_storage", "{}");
     }
 
-    public static void sendWithdraw(String itemKey, int amount) {
-        send("withdraw", "{\"item\":\"" + itemKey + "\",\"amount\":" + amount + "}");
+    public static void sendWithdraw(String itemKey, int amount, boolean shift) {
+        send("withdraw", "{\"item\":\"" + itemKey + "\",\"amount\":" + amount + ",\"shift\":" + shift + "}");
     }
 
     public static void sendDeposit(String itemKey, int amount) {

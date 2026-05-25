@@ -35,8 +35,10 @@ public class StorageCache {
     }
 
     public long getCount(String itemKey) {
-        StorageEntry entry = entries.get(cacheKey(itemKey, null));
-        return entry != null ? entry.getCount() : 0;
+        return entries.values().stream()
+            .filter(e -> e.getItemKey().equals(itemKey))
+            .mapToLong(StorageEntry::getCount)
+            .sum();
     }
 
     public Collection<StorageEntry> getAll() {
