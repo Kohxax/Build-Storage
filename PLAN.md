@@ -236,36 +236,38 @@ CREATE TABLE IF NOT EXISTS player_storage (
 ## 実装フェーズ
 
 ### Phase 1: Plugin - データ基盤
-- [ ] Gradleプロジェクト初期化
-- [ ] SQLite接続・スキーマ作成
-- [ ] アイテムのCRUD操作（StorageDatabase）
-- [ ] PlayerStorage（UUID単位の倉庫操作）
+- [x] Gradleプロジェクト初期化
+- [x] SQLite接続・スキーマ作成
+- [x] アイテムのCRUD操作（StorageDatabase）
+- [x] PlayerStorage（UUID単位の倉庫操作）
 
 ### Phase 2: Plugin - 操作処理と通信
-- [ ] StorageMenu（カスタムInventory）
-- [ ] StorageMenuListener（全バニラ操作のイベント処理）
-- [ ] Plugin Messaging（Modからのリクエスト受付・レスポンス）
+- [x] StorageMenu（カスタムInventory）
+- [x] StorageMenuListener（全バニラ操作のイベント処理）
+- [x] Plugin Messaging（Modからのリクエスト受付・レスポンス）
 
 ### Phase 3: Mod - 通信とインベントリフック
-- [ ] Gradleプロジェクト初期化
-- [ ] Plugin Messagingの送受信
-- [ ] `InventoryScreen` Mixinでインベントリ開閉フック
-- [ ] StoragePanelHandler（スロット定義）
+- [x] Gradleプロジェクト初期化
+- [x] Plugin Messagingの送受信
+- [x] `InventoryScreen` Mixinでインベントリ開閉フック
+- [x] StoragePanelHandler（スロット定義）
 
 ### Phase 4: Mod - UI描画
-- [ ] クリエイティブUIをベースにStoragePanel実装
-- [ ] GrayscaleRenderer（所持なしアイテムのグレーアウト）
-- [ ] ItemCountRenderer（所持数の右下オーバーレイ、1k/1m省略）
-- [ ] 検索バー実装
+- [x] クリエイティブUIをベースにStoragePanel実装
+- [x] GrayscaleRenderer（所持なしアイテムのグレーアウト）
+- [x] ItemCountRenderer（所持数の右下オーバーレイ、1k/1m省略）
+- [x] 検索バー実装
 
 ### Phase 5: Mod - 位置調整システム
-- [ ] BuildAssistConfig（設定の読み書き）
-- [ ] ConfigScreen（設定UI、パネル位置をリアルタイムプレビューで調整）
-- [ ] panel_side（上下左右）の切り替えと自動オフセット計算
-- [ ] バニラインベントリ・倉庫パネル両方の位置をドラッグ調整
+- [x] BuildAssistConfig（設定の読み書き）
+- [x] ConfigScreen（設定UI、パネル位置をリアルタイムプレビューで調整）
+- [x] panel_side（上下左右）の切り替えと自動オフセット計算
+- [x] バニラインベントリ・倉庫パネル両方の位置をドラッグ調整
 
 ### Phase 6: 統合テスト・調整
-- [ ] 全バニラ操作の動作確認
+- [x] Plugin / Mod 両プロジェクトのビルド確認（BUILD SUCCESSFUL）
+- [x] Mixin method descriptor の警告修正
+- [ ] 実機での全バニラ操作の動作確認（要サーバー環境）
 - [ ] 大量アイテム時のパフォーマンス確認
 - [ ] エッジケース対応（NBT付きアイテム、スタック上限等）
 - [ ] 画面解像度・UIスケール違いでの表示確認
