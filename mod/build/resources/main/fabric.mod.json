@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "buildassist",
+  "version": "1.0.0",
+  "name": "BuildAssist",
+  "description": "Unified virtual storage system for builders",
+  "authors": ["buildassist"],
+  "environment": "client",
+  "entrypoints": {
+    "main": ["dev.buildassist.mod.BuildAssistMod"],
+    "client": ["dev.buildassist.mod.client.BuildAssistClient"]
+  },
+  "mixins": ["buildassist.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "fabric-api": "*",
+    "minecraft": "~1.21.4"
+  }
+}

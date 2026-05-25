@@ -1,0 +1,16 @@
+name: BuildAssist
+version: 1.0.0
+main: dev.buildassist.plugin.BuildAssistPlugin
+api-version: '1.21'
+description: Unified virtual storage system for builders
+author: buildassist
+
+commands:
+  warehouse:
+    description: Open your unified storage
+    usage: /warehouse
+
+permissions:
+  buildassist.use:
+    description: Allows using the unified storage
+    default: true
