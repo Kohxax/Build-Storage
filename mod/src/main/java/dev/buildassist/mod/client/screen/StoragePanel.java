@@ -8,9 +8,12 @@ import dev.buildassist.mod.client.render.ItemCountRenderer;
 import dev.buildassist.mod.network.ModMessaging;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
+import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 import net.minecraft.client.gui.widget.TextFieldWidget;
+import net.minecraft.client.input.CharInput;
+import net.minecraft.client.input.KeyInput;
 import net.minecraft.item.ItemGroup;
 import net.minecraft.item.ItemGroups;
 import net.minecraft.item.ItemStack;
@@ -146,8 +149,11 @@ public class StoragePanel {
 
         // Background
         ctx.fill(panelX, panelY, panelX + PANEL_WIDTH, panelY + PANEL_HEIGHT, BG_COLOR);
-        // Border
-        ctx.drawBorder(panelX, panelY, PANEL_WIDTH, PANEL_HEIGHT, BORDER_COLOR);
+        // Border (drawBorder removed in 1.21.11, draw 4 sides manually)
+        ctx.fill(panelX, panelY, panelX + PANEL_WIDTH, panelY + 1, BORDER_COLOR);
+        ctx.fill(panelX, panelY + PANEL_HEIGHT - 1, panelX + PANEL_WIDTH, panelY + PANEL_HEIGHT, BORDER_COLOR);
+        ctx.fill(panelX, panelY, panelX + 1, panelY + PANEL_HEIGHT, BORDER_COLOR);
+        ctx.fill(panelX + PANEL_WIDTH - 1, panelY, panelX + PANEL_WIDTH, panelY + PANEL_HEIGHT, BORDER_COLOR);
 
         // Tab bar
         renderTabs(ctx, mouseX, mouseY);
@@ -225,8 +231,12 @@ public class StoragePanel {
         ctx.fill(barX, barY, barX + 4, barY + barHeight, 0xFF888888);
     }
 
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (searchField.mouseClicked(mouseX, mouseY, button)) return true;
+    public boolean mouseClicked(Click click, boolean consumed) {
+        if (searchField.mouseClicked(click, consumed)) return true;
+
+        double mouseX = click.x();
+        double mouseY = click.y();
+        int button = click.button();
 
         // Tab click
         int tabWidth = PANEL_WIDTH / tabKeys.size();
@@ -268,12 +278,12 @@ public class StoragePanel {
         return true;
     }
 
-    public boolean charTyped(char chr, int modifiers) {
-        return searchField.charTyped(chr, modifiers);
+    public boolean charTyped(CharInput charInput) {
+        return searchField.charTyped(charInput);
     }
 
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        return searchField.keyPressed(keyCode, scanCode, modifiers);
+    public boolean keyPressed(KeyInput keyInput) {
+        return searchField.keyPressed(keyInput);
     }
 
     public void onStorageUpdate() {

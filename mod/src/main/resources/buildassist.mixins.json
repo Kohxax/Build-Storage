@@ -3,7 +3,9 @@
   "package": "dev.buildassist.mod.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "InventoryScreenMixin"
+    "InventoryScreenMixin",
+    "HandledScreenMixin",
+    "ScreenMixin"
   ],
   "injectors": {
     "defaultRequire": 1

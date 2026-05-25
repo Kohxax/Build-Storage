@@ -1,5 +1,5 @@
 plugins {
-    id 'fabric-loom' version '1.9-SNAPSHOT'
+    id 'fabric-loom' version '1.13-SNAPSHOT'
     id 'java'
 }
 
@@ -18,10 +18,10 @@ loom {
 }
 
 dependencies {
-    minecraft 'com.mojang:minecraft:1.21.4'
-    mappings 'net.fabricmc:yarn:1.21.4+build.8:v2'
-    modImplementation 'net.fabricmc:fabric-loader:0.16.10'
-    modImplementation 'net.fabricmc.fabric-api:fabric-api:0.115.1+1.21.4'
+    minecraft 'com.mojang:minecraft:1.21.11'
+    mappings 'net.fabricmc:yarn:1.21.11+build.1:v2'
+    modImplementation 'net.fabricmc:fabric-loader:0.18.4'
+    modImplementation 'net.fabricmc.fabric-api:fabric-api:0.140.2+1.21.11'
 
     // Gson for config serialization
     implementation 'com.google.code.gson:gson:2.11.0'
