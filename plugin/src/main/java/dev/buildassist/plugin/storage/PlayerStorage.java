@@ -28,8 +28,12 @@ public class PlayerStorage {
     public boolean deposit(ItemStack item) {
         if (item == null || item.getType().isAir()) return false;
         String key = item.getType().getKey().toString();
-        String nbt = serializeNbt(item);
-        return database.adjustCount(playerUuid, key, nbt, item.getAmount());
+        String serialized = serializeItem(item);
+        return database.adjustCount(playerUuid, key, serialized, item.getAmount());
+    }
+
+    public long getTotalCount(String itemKey) {
+        return database.getTotalCount(playerUuid, itemKey);
     }
 
     // Returns false if insufficient stock.
@@ -48,10 +52,11 @@ public class PlayerStorage {
         return sb.toString();
     }
 
-    private String serializeNbt(ItemStack item) {
+    private String serializeItem(ItemStack item) {
         if (!item.hasItemMeta()) return null;
-        // Serialize ItemMeta to a stable string key using Bukkit's config serialization.
-        // This is sufficient for distinguishing enchanted/named items in storage.
-        return item.getItemMeta().getAsString();
+        org.bukkit.configuration.file.YamlConfiguration cfg =
+            new org.bukkit.configuration.file.YamlConfiguration();
+        cfg.set("i", item);
+        return cfg.saveToString();
     }
 }

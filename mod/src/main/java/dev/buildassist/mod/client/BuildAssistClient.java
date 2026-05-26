@@ -8,6 +8,8 @@ import dev.buildassist.mod.network.ModMessaging;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 
 public class BuildAssistClient implements ClientModInitializer {
@@ -40,6 +42,21 @@ public class BuildAssistClient implements ClientModInitializer {
         activePanel = new StoragePanel(screen, BuildAssistConfig.get());
         activePanelListener = activePanel::onStorageUpdate;
         StorageCache.INSTANCE.addListener(activePanelListener);
+
+        ScreenMouseEvents.allowMouseClick(screen).register((s, click) -> {
+            StoragePanel panel = activePanel;
+            return panel == null || !panel.mouseClicked(click, false);
+        });
+
+        ScreenMouseEvents.allowMouseScroll(screen).register((s, mouseX, mouseY, hAmount, vAmount) -> {
+            StoragePanel panel = activePanel;
+            return panel == null || !panel.mouseScrolled(mouseX, mouseY, hAmount, vAmount);
+        });
+
+        ScreenKeyboardEvents.allowKeyPress(screen).register((s, keyInput) -> {
+            StoragePanel panel = activePanel;
+            return panel == null || !panel.keyPressed(keyInput);
+        });
     }
 
     public static void onInventoryClose() {
@@ -47,6 +64,9 @@ public class BuildAssistClient implements ClientModInitializer {
     }
 
     private static void closePanel() {
+        if (activePanel != null) {
+            activePanel.onClose();
+        }
         if (activePanelListener != null) {
             StorageCache.INSTANCE.removeListener(activePanelListener);
             activePanelListener = null;

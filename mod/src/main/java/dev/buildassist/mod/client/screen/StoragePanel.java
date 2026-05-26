@@ -111,6 +111,11 @@ public class StoragePanel {
 
     private int hoveredSlot = -1;
 
+    // Drag-to-reposition state
+    private boolean isDragging = false;
+    private int dragLastX, dragLastY;
+    private boolean positionDirty = false;
+
     public StoragePanel(InventoryScreen inventoryScreen, BuildAssistConfig config) {
         this.cache = StorageCache.INSTANCE;
         this.config = config;
@@ -194,12 +199,38 @@ public class StoragePanel {
     // ─── Rendering ────────────────────────────────────────────────────────────
 
     public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
+        // Update drag state by polling GLFW (avoids needing mouseDragged/mouseReleased injections)
+        long win = MinecraftClient.getInstance().getWindow().getHandle();
+        boolean leftDown = GLFW.glfwGetMouseButton(win, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
+        if (isDragging) {
+            if (!leftDown) {
+                isDragging = false;
+                if (positionDirty) {
+                    config.save();
+                    positionDirty = false;
+                }
+            } else {
+                int dx = mouseX - dragLastX;
+                int dy = mouseY - dragLastY;
+                if (dx != 0 || dy != 0) {
+                    panelX += dx;
+                    panelY += dy;
+                    config.setPanelOffsetX(config.getPanelOffsetX() + dx);
+                    config.setPanelOffsetY(config.getPanelOffsetY() + dy);
+                    positionDirty = true;
+                    dragLastX = mouseX;
+                    dragLastY = mouseY;
+                    buildSearchField();
+                }
+            }
+        }
+
         // Unselected tabs drawn first (behind panel edge)
         renderAllTabs(ctx, mouseX, mouseY, false);
 
-        // Background: exact vanilla creative tab_items texture (195×136, stored in 256×256)
-        Identifier bgTexture = getSelectedGroupTexture();
-        ctx.drawTexture(RenderPipelines.GUI_TEXTURED, bgTexture,
+        // Background: vanilla creative inventory raw texture file
+        ctx.drawTexture(RenderPipelines.GUI_TEXTURED,
+            Identifier.ofVanilla("textures/gui/container/creative_inventory/tab_items.png"),
             panelX, panelY, 0f, 0f, PANEL_WIDTH, PANEL_HEIGHT, 256, 256);
 
         // Search field overlaid on the panel header area
@@ -235,29 +266,11 @@ public class StoragePanel {
             }
         }
 
-        // Tooltip
+        // Tooltip: vanilla item tooltip (name, enchantments, lore, etc.)
         if (hoveredSlot >= 0 && hoveredSlot < currentSlots.size()) {
             StoragePanelHandler.SlotEntry entry = currentSlots.get(hoveredSlot);
-            List<Text> tooltip = new ArrayList<>();
-            tooltip.add(entry.displayStack.getName());
-            if (entry.isOwned()) {
-                tooltip.add(Text.literal("§7在庫: §e" + ItemCountRenderer.format(entry.count)));
-            } else {
-                tooltip.add(Text.literal("§8未所持"));
-            }
-            ctx.drawTooltip(MinecraftClient.getInstance().textRenderer, tooltip, mouseX, mouseY);
+            ctx.drawItemTooltip(MinecraftClient.getInstance().textRenderer, entry.displayStack, mouseX, mouseY);
         }
-    }
-
-    private Identifier getSelectedGroupTexture() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client.world == null) return Identifier.ofVanilla("container/creative_inventory/tab_items");
-        var groups = client.world.getRegistryManager().getOptional(RegistryKeys.ITEM_GROUP);
-        if (groups.isPresent()) {
-            var group = groups.get().get(tabKeys.get(currentTabIndex));
-            if (group != null) return group.getTexture();
-        }
-        return Identifier.ofVanilla("container/creative_inventory/tab_items");
     }
 
     private void renderAllTabs(DrawContext ctx, int mouseX, int mouseY, boolean selectedOnly) {
@@ -334,6 +347,14 @@ public class StoragePanel {
 
         if (searchField.mouseClicked(click, consumed)) return true;
 
+        // Start drag from header bar (above item grid, excluding search box)
+        if (button == 0 && isInDragHandle((int) mouseX, (int) mouseY)) {
+            isDragging = true;
+            dragLastX = (int) mouseX;
+            dragLastY = (int) mouseY;
+            return true;
+        }
+
         // Slot click
         if (hoveredSlot >= 0 && hoveredSlot < currentSlots.size()) {
             StoragePanelHandler.SlotEntry entry = currentSlots.get(hoveredSlot);
@@ -343,7 +364,7 @@ public class StoragePanel {
                              || GLFW.glfwGetKey(win, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS;
                 int amount = switch (button) {
                     case 0 -> entry.displayStack.getItem().getMaxCount();
-                    case 1 -> Math.max(1, entry.displayStack.getItem().getMaxCount() / 2);
+                    case 1 -> 1;
                     default -> 1;
                 };
                 ModMessaging.sendWithdraw(entry.itemKey, (int) Math.min(amount, entry.count), shift);
@@ -371,6 +392,22 @@ public class StoragePanel {
             }
         }
         return -1;
+    }
+
+    private boolean isInDragHandle(int x, int y) {
+        if (x < panelX || x >= panelX + PANEL_WIDTH) return false;
+        if (y < panelY || y >= panelY + GRID_Y) return false;
+        // Exclude search box region
+        if (x >= panelX + 82 && x < panelX + 82 + 79
+                && y >= panelY + 6 && y < panelY + 6 + 9) return false;
+        return true;
+    }
+
+    public void onClose() {
+        if (positionDirty) {
+            config.save();
+            positionDirty = false;
+        }
     }
 
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {

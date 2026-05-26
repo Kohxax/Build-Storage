@@ -1,10 +1,8 @@
 package dev.buildassist.plugin.network;
 
 import dev.buildassist.plugin.db.StorageItem;
-import dev.buildassist.plugin.menu.StorageMenu;
 import dev.buildassist.plugin.storage.PlayerStorage;
 import dev.buildassist.plugin.storage.StorageManager;
-import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -52,8 +50,6 @@ public class PluginMessaging implements PluginMessageListener {
 
     private void handleOpenStorage(Player player) {
         PlayerStorage storage = storageManager.get(player);
-        StorageMenu menu = new StorageMenu(storage);
-        menu.open(player);
         sendStorageContents(player, storage);
     }
 
@@ -83,11 +79,7 @@ public class PluginMessaging implements PluginMessageListener {
                 int left = (int) take;
                 while (left > 0) {
                     int batch = Math.min(maxStack, left);
-                    ItemStack item = new ItemStack(mat, batch);
-                    if (si.getNbtData() != null) {
-                        item = Bukkit.getUnsafe().modifyItemStack(item, si.getNbtData());
-                        item.setAmount(batch);
-                    }
+                    ItemStack item = reconstructItem(mat, batch, si.getNbtData());
                     if (shift) {
                         player.getInventory().addItem(item)
                             .forEach((s, leftover) -> player.getWorld().dropItemNaturally(player.getLocation(), leftover));
@@ -133,6 +125,24 @@ public class PluginMessaging implements PluginMessageListener {
         } catch (Exception e) {
             plugin.getLogger().warning("Deposit error for " + player.getName() + ": " + e.getMessage());
         }
+    }
+
+    private ItemStack reconstructItem(Material mat, int amount, String nbtData) {
+        if (nbtData != null) {
+            try {
+                org.bukkit.configuration.file.YamlConfiguration cfg =
+                    new org.bukkit.configuration.file.YamlConfiguration();
+                cfg.loadFromString(nbtData);
+                ItemStack template = cfg.getItemStack("i");
+                if (template != null) {
+                    template.setAmount(amount);
+                    return template;
+                }
+            } catch (Exception e) {
+                plugin.getLogger().warning("Failed to deserialize item NBT, using plain item: " + e.getMessage());
+            }
+        }
+        return new ItemStack(mat, amount);
     }
 
     public void sendStorageContents(Player player, PlayerStorage storage) {

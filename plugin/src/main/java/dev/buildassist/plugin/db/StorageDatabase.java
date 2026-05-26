@@ -79,6 +79,20 @@ public class StorageDatabase {
         return 0;
     }
 
+    public long getTotalCount(UUID playerUuid, String itemKey) {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT COALESCE(SUM(count), 0) FROM player_storage WHERE player_uuid = ? AND item_key = ? AND count > 0")) {
+            ps.setString(1, playerUuid.toString());
+            ps.setString(2, itemKey);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getLong(1);
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to get total count", e);
+        }
+        return 0;
+    }
+
     // Adds (positive) or removes (negative delta) items. Returns false if insufficient stock.
     public boolean adjustCount(UUID playerUuid, String itemKey, String nbtData, long delta) {
         try {
