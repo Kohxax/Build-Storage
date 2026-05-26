@@ -1,7 +1,9 @@
 package dev.buildassist.mod.mixin;
 
 import dev.buildassist.mod.client.BuildAssistClient;
+import dev.buildassist.mod.client.screen.StoragePanel;
 import dev.buildassist.mod.network.ModMessaging;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 import net.minecraft.item.ItemStack;
@@ -12,6 +14,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(HandledScreen.class)
 public class HandledScreenMixin {
@@ -23,7 +26,7 @@ public class HandledScreenMixin {
         }
     }
 
-    // Intercept shift+click in the survival inventory to deposit items into storage
+    // Intercept slot actions in the survival inventory when the storage panel is open
     @Inject(
         method = "onMouseClick(Lnet/minecraft/screen/slot/Slot;IILnet/minecraft/screen/slot/SlotActionType;)V",
         at = @At("HEAD"),
@@ -32,8 +35,27 @@ public class HandledScreenMixin {
     private void onSlotClick(Slot slot, int slotId, int button, SlotActionType actionType, CallbackInfo ci) {
         if (!((Object)this instanceof InventoryScreen)) return;
         if (BuildAssistClient.getActivePanel() == null) return;
+
+        // Prevent cursor items from being dropped when clicking outside all slots —
+        // deposit them into storage instead (fixes issue 19: withdraw then drop)
+        if (slot == null) {
+            MinecraftClient mc = MinecraftClient.getInstance();
+            if (mc.player != null) {
+                ItemStack cursor = mc.player.currentScreenHandler.getCursorStack();
+                if (!cursor.isEmpty()) {
+                    ModMessaging.sendDeposit(
+                        Registries.ITEM.getId(cursor.getItem()).toString(),
+                        cursor.getCount()
+                    );
+                }
+            }
+            ci.cancel();
+            return;
+        }
+
+        // Shift+click: deposit the clicked slot's item into storage
         if (actionType != SlotActionType.QUICK_MOVE) return;
-        if (slot == null || slot.getStack().isEmpty()) return;
+        if (slot.getStack().isEmpty()) return;
 
         ItemStack stack = slot.getStack();
         ModMessaging.sendDeposit(
@@ -41,5 +63,15 @@ public class HandledScreenMixin {
             stack.getCount()
         );
         ci.cancel();
+    }
+
+    // Intercept mouse release to prevent drag-dropping items onto the storage panel (issue 18)
+    @Inject(method = "mouseReleased(DDI)Z", at = @At("HEAD"), cancellable = true)
+    private void onMouseReleased(double mouseX, double mouseY, int button, CallbackInfoReturnable<Boolean> cir) {
+        if (!((Object)this instanceof InventoryScreen)) return;
+        StoragePanel panel = BuildAssistClient.getActivePanel();
+        if (panel != null && panel.mouseReleased(mouseX, mouseY, button)) {
+            cir.setReturnValue(true);
+        }
     }
 }

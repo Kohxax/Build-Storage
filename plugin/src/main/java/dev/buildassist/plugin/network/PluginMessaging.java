@@ -118,8 +118,24 @@ public class PluginMessaging implements PluginMessageListener {
             PlayerStorage storage = storageManager.get(player);
             ItemStack depositItem = new ItemStack(mat, amount);
             if (storage.deposit(depositItem)) {
-                // Remove from player inventory
-                player.getInventory().removeItem(depositItem);
+                // Remove from cursor first (panel deposits cursor items), then from inventory
+                int remaining = amount;
+                ItemStack cursor = player.getItemOnCursor();
+                if (cursor != null && !cursor.getType().isAir()
+                        && cursor.getType().getKey().toString().equals(itemKey)) {
+                    int take = Math.min(cursor.getAmount(), remaining);
+                    int newCursorAmount = cursor.getAmount() - take;
+                    if (newCursorAmount <= 0) {
+                        player.setItemOnCursor(new ItemStack(Material.AIR));
+                    } else {
+                        cursor.setAmount(newCursorAmount);
+                        player.setItemOnCursor(cursor);
+                    }
+                    remaining -= take;
+                }
+                if (remaining > 0) {
+                    player.getInventory().removeItem(new ItemStack(mat, remaining));
+                }
                 sendStorageUpdate(player, storage);
             }
         } catch (Exception e) {

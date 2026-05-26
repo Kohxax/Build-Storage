@@ -43,8 +43,8 @@ public class StoragePanel {
     // Slot grid offset within the background texture (matches vanilla creative)
     private static final int GRID_X = 9;
     private static final int GRID_Y = 18;
-    // Clips off the hotbar rows at the bottom of the creative texture
-    private static final int PANEL_CLIP_HEIGHT = GRID_Y + VISIBLE_ROWS * SLOT_SIZE + 4; // 112
+    // Clips off the hotbar rows at the bottom of the creative texture (clip at exact item grid bottom)
+    private static final int PANEL_CLIP_HEIGHT = GRID_Y + VISIBLE_ROWS * SLOT_SIZE; // 108
     // Tab button dimensions (from vanilla bytecode)
     private static final int TAB_W        = 26;
     private static final int TAB_H        = 32;
@@ -57,9 +57,11 @@ public class StoragePanel {
     private static final int SCROLL_H        = 15;
     private static final int SCROLL_W        = 12;
 
-    // Sentinel key for the custom "uncategorized" tab (not a real ItemGroup)
+    // Sentinel keys for custom tabs (not real ItemGroups)
     private static final RegistryKey<ItemGroup> UNCATEGORIZED_KEY =
         RegistryKey.of(RegistryKeys.ITEM_GROUP, Identifier.of("buildassist", "uncategorized"));
+    private static final RegistryKey<ItemGroup> SEARCH_KEY =
+        RegistryKey.of(RegistryKeys.ITEM_GROUP, Identifier.of("buildassist", "search"));
 
     // Vanilla creative GUI atlas sprites
     private static final Identifier SCROLLER =
@@ -173,7 +175,8 @@ public class StoragePanel {
         tabKeys.add(ItemGroups.COMBAT);
         tabKeys.add(ItemGroups.FOOD_AND_DRINK);
         tabKeys.add(ItemGroups.INGREDIENTS);
-        tabKeys.add(UNCATEGORIZED_KEY); // replaces spawn eggs tab
+        tabKeys.add(UNCATEGORIZED_KEY); // index 9, bottom col 2
+        tabKeys.add(SEARCH_KEY);        // index 10, bottom col 3 — search across all stored items
     }
 
     private void buildSearchField() {
@@ -204,6 +207,11 @@ public class StoragePanel {
         }
 
         RegistryKey<ItemGroup> tabKey = tabKeys.get(currentTabIndex);
+
+        if (tabKey.equals(SEARCH_KEY)) {
+            currentSlots = buildSearchSlots();
+            return;
+        }
 
         if (tabKey.equals(UNCATEGORIZED_KEY)) {
             currentSlots = buildUncategorizedSlots(client);
@@ -254,6 +262,23 @@ public class StoragePanel {
                 continue;
             }
 
+            result.add(new StoragePanelHandler.SlotEntry(stack, itemKey, entry.getCount()));
+        }
+        return result;
+    }
+
+    private List<StoragePanelHandler.SlotEntry> buildSearchSlots() {
+        String lowerSearch = searchQuery.toLowerCase();
+        List<StoragePanelHandler.SlotEntry> result = new ArrayList<>();
+        for (StorageEntry entry : cache.getAll()) {
+            String itemKey = entry.getItemKey();
+            net.minecraft.item.Item item = Registries.ITEM.get(Identifier.of(itemKey));
+            if (item == Items.AIR) continue;
+            ItemStack stack = new ItemStack(item);
+            if (!lowerSearch.isEmpty()) {
+                String displayName = stack.getName().getString().toLowerCase();
+                if (!displayName.contains(lowerSearch) && !itemKey.contains(lowerSearch)) continue;
+            }
             result.add(new StoragePanelHandler.SlotEntry(stack, itemKey, entry.getCount()));
         }
         return result;
@@ -314,8 +339,10 @@ public class StoragePanel {
             panelX, panelY, 0f, 0f, PANEL_WIDTH, PANEL_HEIGHT, 256, 256);
         ctx.disableScissor();
 
-        // Search field overlaid on the panel header area
-        searchField.render(ctx, mouseX, mouseY, delta);
+        // Search field only visible when the Search tab is active
+        if (tabKeys.get(currentTabIndex).equals(SEARCH_KEY)) {
+            searchField.render(ctx, mouseX, mouseY, delta);
+        }
 
         // Scrollbar
         renderScrollbar(ctx);
@@ -369,8 +396,9 @@ public class StoragePanel {
     }
 
     private void renderTabIcon(DrawContext ctx, ItemGroup group, boolean active, int tabIndex) {
-        boolean isTop = (group != null) ? group.getRow() == ItemGroup.Row.TOP : (tabIndex < 7);
-        int col     = (group != null) ? group.getColumn()                     : (tabIndex < 7 ? tabIndex : tabIndex - 7);
+        // Use index-based layout to avoid conflicts with vanilla group column assignments
+        boolean isTop = (tabIndex < 7);
+        int col = isTop ? tabIndex : (tabIndex - 7);
 
         int tabX = panelX + col * TAB_COL_STEP;
         int tabY = isTop ? (panelY - TAB_Y_OFFSET) : (panelY + PANEL_CLIP_HEIGHT - 4);
@@ -384,7 +412,13 @@ public class StoragePanel {
 
         int iconX = tabX + 5;
         int iconY = tabY + 8 + (isTop ? 1 : -1);
-        ItemStack icon = (group != null) ? group.getIcon() : new ItemStack(Items.CHEST);
+        ItemStack icon;
+        if (group != null) {
+            icon = group.getIcon();
+        } else {
+            RegistryKey<ItemGroup> key = tabKeys.get(tabIndex);
+            icon = key.equals(SEARCH_KEY) ? new ItemStack(Items.COMPASS) : new ItemStack(Items.CHEST);
+        }
         ctx.drawItem(icon, iconX, iconY);
     }
 
@@ -416,6 +450,12 @@ public class StoragePanel {
             currentTabIndex = tabIdx;
             scrollOffset = 0;
             refreshSlots();
+            // Auto-focus search field when switching to search tab, defocus otherwise
+            if (tabKeys.get(tabIdx).equals(SEARCH_KEY)) {
+                searchField.setFocused(true);
+            } else {
+                searchField.setFocused(false);
+            }
             return true;
         }
 
@@ -476,12 +516,18 @@ public class StoragePanel {
                 long win = MinecraftClient.getInstance().getWindow().getHandle();
                 boolean shift = GLFW.glfwGetKey(win, GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS
                              || GLFW.glfwGetKey(win, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS;
-                int amount = switch (button) {
-                    case 0 -> entry.displayStack.getItem().getMaxCount();
-                    case 1 -> 1;
-                    default -> 1;
-                };
-                ModMessaging.sendWithdraw(entry.itemKey, (int) Math.min(amount, entry.count), shift);
+                int amount;
+                if (shift && button == 0) {
+                    // Shift+left: withdraw max stack to inventory
+                    amount = (int) Math.min((long) entry.displayStack.getItem().getMaxCount(), entry.count);
+                } else if (button == 1) {
+                    // Right click: half of available count
+                    amount = (int) Math.max(1L, entry.count / 2);
+                } else {
+                    // Left click: single item
+                    amount = 1;
+                }
+                ModMessaging.sendWithdraw(entry.itemKey, amount, shift);
             }
             return true;
         }
@@ -490,15 +536,10 @@ public class StoragePanel {
     }
 
     private int getTabAt(double mouseX, double mouseY) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client.world == null) return -1;
-        var groupRegistry = client.world.getRegistryManager().getOptional(RegistryKeys.ITEM_GROUP);
-        if (groupRegistry.isEmpty()) return -1;
-
         for (int i = 0; i < tabKeys.size(); i++) {
-            ItemGroup group = groupRegistry.get().get(tabKeys.get(i));
-            boolean isTop = (group != null) ? group.getRow() == ItemGroup.Row.TOP : (i < 7);
-            int col       = (group != null) ? group.getColumn()                   : (i < 7 ? i : i - 7);
+            // Index-based layout — matches renderTabIcon exactly
+            boolean isTop = (i < 7);
+            int col = isTop ? i : (i - 7);
             int tabX = panelX + col * TAB_COL_STEP;
             int tabY = isTop ? (panelY - TAB_Y_OFFSET) : (panelY + PANEL_CLIP_HEIGHT - 4);
             if (mouseX >= tabX && mouseX < tabX + TAB_W && mouseY >= tabY && mouseY < tabY + TAB_H) {
@@ -515,6 +556,38 @@ public class StoragePanel {
         if (x >= panelX + 82 && x < panelX + 82 + 79
                 && y >= panelY + 6 && y < panelY + 6 + 9) return false;
         return true;
+    }
+
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (button == 0) {
+            // Clean up drag states (also handled by GLFW poll in render, but be explicit here)
+            isScrollbarDragging = false;
+            if (isDragging) {
+                isDragging = false;
+                if (positionDirty) {
+                    config.save();
+                    positionDirty = false;
+                }
+            }
+        }
+        // If releasing over our panel, consume the event and deposit any cursor items
+        if (mouseX >= panelX && mouseX < panelX + PANEL_WIDTH
+                && mouseY >= panelY && mouseY < panelY + PANEL_CLIP_HEIGHT) {
+            if (button == 0) {
+                MinecraftClient mc = MinecraftClient.getInstance();
+                if (mc.player != null) {
+                    ItemStack cursor = mc.player.currentScreenHandler.getCursorStack();
+                    if (!cursor.isEmpty()) {
+                        ModMessaging.sendDeposit(
+                            Registries.ITEM.getId(cursor.getItem()).toString(),
+                            cursor.getCount()
+                        );
+                    }
+                }
+            }
+            return true;
+        }
+        return false;
     }
 
     public void onClose() {
