@@ -1,7 +1,6 @@
 package dev.buildassist.mod.mixin;
 
 import dev.buildassist.mod.client.BuildAssistClient;
-import dev.buildassist.mod.client.screen.StoragePanel;
 import dev.buildassist.mod.network.ModMessaging;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
@@ -14,7 +13,6 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(HandledScreen.class)
 public class HandledScreenMixin {
@@ -63,15 +61,5 @@ public class HandledScreenMixin {
             stack.getCount()
         );
         ci.cancel();
-    }
-
-    // Intercept mouse release to prevent drag-dropping items onto the storage panel (issue 18)
-    @Inject(method = "mouseReleased(DDI)Z", at = @At("HEAD"), cancellable = true)
-    private void onMouseReleased(double mouseX, double mouseY, int button, CallbackInfoReturnable<Boolean> cir) {
-        if (!((Object)this instanceof InventoryScreen)) return;
-        StoragePanel panel = BuildAssistClient.getActivePanel();
-        if (panel != null && panel.mouseReleased(mouseX, mouseY, button)) {
-            cir.setReturnValue(true);
-        }
     }
 }
