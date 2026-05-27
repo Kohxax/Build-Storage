@@ -100,6 +100,13 @@ public class PluginMessaging implements PluginMessageListener {
                 }
                 remaining -= (int) take;
             }
+            if (shift) {
+                // Force immediate inventory sync so the client receives the correct
+                // revision before any subsequent ClickSlot. Without this, addItem()
+                // delays SetSlot to end-of-tick, causing a revision mismatch that
+                // makes the first inventory click fail.
+                player.updateInventory();
+            }
             sendStorageUpdate(player, storage);
         } catch (Exception e) {
             plugin.getLogger().warning("Withdraw error for " + player.getName() + ": " + e.getMessage());
