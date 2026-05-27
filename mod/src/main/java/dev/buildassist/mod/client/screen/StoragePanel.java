@@ -678,11 +678,8 @@ public class StoragePanel {
                         );
                     }
                 }
-                return true;
             }
-            // After a withdraw, let the screen process the release so HandledScreen
-            // can reset its internal drag state before the user's next click.
-            return !wasWithdraw;
+            return true;
         }
         return false;
     }
