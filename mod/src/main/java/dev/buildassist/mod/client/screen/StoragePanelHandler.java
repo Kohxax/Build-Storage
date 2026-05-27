@@ -56,7 +56,7 @@ public class StoragePanelHandler {
                 continue;
             }
 
-            long count = cache.getCountAll(itemKey);
+            long count = cache.getCount(itemKey);
             result.add(new SlotEntry(stack, itemKey, count));
         }
         return result;

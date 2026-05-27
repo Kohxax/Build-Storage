@@ -34,6 +34,10 @@ public class QuantityPickerOverlay {
 
     private int ox, oy;
 
+    private int holdingButton = 0;   // +1 = plus held, -1 = minus held
+    private long holdStartMs  = 0L;
+    private long lastRepeatMs = 0L;
+
     public boolean isOpen() { return open; }
 
     public void open(int panelX, int panelY, int panelW, StoragePanelHandler.SlotEntry entry) {
@@ -57,12 +61,31 @@ public class QuantityPickerOverlay {
         open = false;
         entry = null;
         amountField = null;
+        holdingButton = 0;
+    }
+
+    public void mouseReleased(double mx, double my, int button) {
+        holdingButton = 0;
     }
 
     // ─── Rendering ────────────────────────────────────────────────────────────
 
     public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
         if (!open) return;
+
+        if (holdingButton != 0) {
+            long now = System.currentTimeMillis();
+            if (now - holdStartMs > 500 && now - lastRepeatMs > 80) {
+                int max = longPressMax();
+                int current = 0;
+                try { current = Integer.parseInt(amountField.getText().trim()); }
+                catch (NumberFormatException ignored) {}
+                if (holdingButton > 0 && current < max) adjustValue(+1);
+                else if (holdingButton < 0 && current > 1) adjustValue(-1);
+                lastRepeatMs = now;
+            }
+        }
+
         MinecraftClient mc = MinecraftClient.getInstance();
 
         // Dim overlay
@@ -157,10 +180,14 @@ public class QuantityPickerOverlay {
         if (myi >= oy + ROW_INPUT && myi < oy + ROW_INPUT + FIELD_H) {
             if (mxi >= ox + 4 && mxi < ox + 4 + SMALL_BTN) {
                 adjustValue(-1);
+                holdingButton = -1;
+                holdStartMs = lastRepeatMs = System.currentTimeMillis();
                 return true;
             }
             if (mxi >= ox + 108 && mxi < ox + 108 + SMALL_BTN) {
                 adjustValue(+1);
+                holdingButton = +1;
+                holdStartMs = lastRepeatMs = System.currentTimeMillis();
                 return true;
             }
             if (amountField != null) {
@@ -235,11 +262,26 @@ public class QuantityPickerOverlay {
         if (amountField == null) return;
         int current = 0;
         try { current = Integer.parseInt(amountField.getText().trim()); } catch (NumberFormatException ignored) {}
-        int maxStack = entry != null ? entry.displayStack.getItem().getMaxCount() : 1;
-        int step = (mode == Mode.STACK) ? 1 : 1;
-        int newVal = Math.max(1, current + delta * step);
+        int newVal = Math.max(1, current + delta);
         amountField.setText(String.valueOf(newVal));
         amountField.setCursorToEnd(false);
+    }
+
+    private int longPressMax() {
+        if (entry == null) return 1;
+        int maxStack = entry.displayStack.getItem().getMaxCount();
+        int freeSlots = 0;
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc.player != null) {
+            for (int i = 0; i < 36; i++) {
+                if (mc.player.getInventory().getStack(i).isEmpty()) freeSlots++;
+            }
+        }
+        long limit = mode == Mode.STACK ? freeSlots : (long) freeSlots * maxStack;
+        long stockMax = mode == Mode.STACK
+            ? (long) Math.ceil((double) entry.count / maxStack)
+            : entry.count;
+        return (int) Math.max(1, Math.min(limit, stockMax));
     }
 
     /** Returns resolved item count, or -1 if invalid. Clamped to [1, stock]. */

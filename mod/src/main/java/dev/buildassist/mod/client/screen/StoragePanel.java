@@ -109,9 +109,7 @@ public class StoragePanel {
         Identifier.ofVanilla("container/creative_inventory/tab_bottom_unselected_7"),
     };
 
-    private static final int HOVER_COLOR     = 0x80FFFFFF;
-    private static final int HOVER_NBT_COLOR = 0x80FFD700;
-    private static final int NBT_TINT_COLOR  = 0x30FFD700;
+    private static final int HOVER_COLOR = 0x80FFFFFF;
 
     private final StorageCache cache;
     private final BuildAssistConfig config;
@@ -449,9 +447,7 @@ public class StoragePanel {
             StoragePanelHandler.SlotEntry entry = currentSlots.get(slotIndex);
 
             boolean hovered = mouseX >= sx && mouseX < sx + 16 && mouseY >= sy && mouseY < sy + 16;
-            if (entry.hasNbt()) {
-                ctx.fill(sx, sy, sx + 16, sy + 16, hovered ? HOVER_NBT_COLOR : NBT_TINT_COLOR);
-            } else if (hovered) {
+            if (hovered) {
                 ctx.fill(sx, sy, sx + 16, sy + 16, HOVER_COLOR);
             }
             if (hovered) hoveredSlot = slotIndex;
@@ -651,7 +647,10 @@ public class StoragePanel {
     }
 
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        if (quantityPicker.isOpen()) return true;
+        if (quantityPicker.isOpen()) {
+            quantityPicker.mouseReleased(mouseX, mouseY, button);
+            return true;
+        }
 
         boolean wasWithdraw = suppressDepositOnRelease;
         suppressDepositOnRelease = false;
@@ -679,8 +678,11 @@ public class StoragePanel {
                         );
                     }
                 }
+                return true;
             }
-            return true;
+            // After a withdraw, let the screen process the release so HandledScreen
+            // can reset its internal drag state before the user's next click.
+            return !wasWithdraw;
         }
         return false;
     }
