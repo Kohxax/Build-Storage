@@ -202,7 +202,7 @@ public class StoragePanel {
             scrollOffset = 0;
             refreshSlots();
         });
-        searchField.setFocused(true);
+        searchField.setFocused(false);
     }
 
     private void refreshSlots() {
