@@ -36,16 +36,27 @@ public class HandledScreenMixin {
         if (BuildAssistClient.getActivePanel() == null) return;
 
         // Prevent cursor items from being dropped when clicking outside all slots —
-        // deposit them into storage instead (fixes issue 19: withdraw then drop)
+        // deposit into storage only when the click is inside the storage panel;
+        // clicks outside both inventories should drop the item as vanilla would.
         if (slot == null) {
             MinecraftClient mc = MinecraftClient.getInstance();
             if (mc.player != null) {
                 ItemStack cursor = mc.player.currentScreenHandler.getCursorStack();
                 if (!cursor.isEmpty()) {
-                    ModMessaging.sendDeposit(
-                        Registries.ITEM.getId(cursor.getItem()).toString(),
-                        cursor.getCount()
-                    );
+                    double win = mc.getWindow().getWidth();
+                    double h   = mc.getWindow().getHeight();
+                    double mouseX = mc.mouse.getX() * mc.getWindow().getScaledWidth()  / win;
+                    double mouseY = mc.mouse.getY() * mc.getWindow().getScaledHeight() / h;
+                    dev.buildassist.mod.client.screen.StoragePanel panel = BuildAssistClient.getActivePanel();
+                    if (panel != null && panel.isInsidePanel(mouseX, mouseY)) {
+                        ModMessaging.sendDeposit(
+                            Registries.ITEM.getId(cursor.getItem()).toString(),
+                            cursor.getCount()
+                        );
+                        ci.cancel();
+                    }
+                    // Outside panel: don't cancel → vanilla drops the item
+                    return;
                 }
             }
             ci.cancel();

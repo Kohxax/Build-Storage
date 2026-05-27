@@ -691,6 +691,11 @@ public class StoragePanel {
         return false;
     }
 
+    public boolean isInsidePanel(double x, double y) {
+        return x >= panelX && x < panelX + PANEL_WIDTH
+            && y >= panelY && y < panelY + PANEL_CLIP_HEIGHT;
+    }
+
     public void onStorageUpdate() {
         refreshSlots();
     }
