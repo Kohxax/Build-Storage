@@ -105,7 +105,9 @@ public class StoragePanel {
         Identifier.ofVanilla("container/creative_inventory/tab_bottom_unselected_7"),
     };
 
-    private static final int HOVER_COLOR = 0x80FFFFFF;
+    private static final int HOVER_COLOR     = 0x80FFFFFF;
+    private static final int HOVER_NBT_COLOR = 0x80FFD700; // gold tint for NBT items
+    private static final int NBT_TINT_COLOR  = 0x30FFD700; // subtle always-on tint
 
     private final StorageCache cache;
     private final BuildAssistConfig config;
@@ -131,6 +133,17 @@ public class StoragePanel {
 
     // Scrollbar drag state
     private boolean isScrollbarDragging = false;
+
+    // Suppresses mouseReleased deposit when last click was a slot withdraw (not a drag-in)
+    private boolean suppressDepositOnRelease = false;
+
+    private final QuantityPickerOverlay quantityPicker = new QuantityPickerOverlay();
+
+    // Re-entrancy guard: prevents ScreenCharMixin from routing back into the panel when
+    // panel.charTyped() internally calls searchField/amountField's own charTyped().
+    private static boolean handlingCharTyped = false;
+    public static boolean isHandlingCharTyped() { return handlingCharTyped; }
+    public static void setHandlingCharTyped(boolean v) { handlingCharTyped = v; }
 
     public StoragePanel(InventoryScreen inventoryScreen, BuildAssistConfig config) {
         this.cache = StorageCache.INSTANCE;
@@ -190,6 +203,7 @@ public class StoragePanel {
             panelX + 82, panelY + 6, 79, 9, Text.literal(""));
         searchField.setMaxLength(64);
         searchField.setDrawsBackground(false);
+        searchField.setEditableColor(0xFF000000);   // black text on white background
         searchField.setText(searchQuery);
         searchField.setChangedListener(text -> {
             searchQuery = text;
@@ -237,7 +251,7 @@ public class StoragePanel {
         Set<String> categorized = new HashSet<>();
         if (registryOpt.isPresent()) {
             for (RegistryKey<ItemGroup> key : tabKeys) {
-                if (key.equals(UNCATEGORIZED_KEY)) continue;
+                if (key.equals(UNCATEGORIZED_KEY) || key.equals(SEARCH_KEY)) continue;
                 var group = registryOpt.get().get(key);
                 if (group == null) continue;
                 for (ItemStack stack : group.getDisplayStacks()) {
@@ -251,7 +265,10 @@ public class StoragePanel {
 
         for (StorageEntry entry : cache.getAll()) {
             String itemKey = entry.getItemKey();
-            if (categorized.contains(itemKey)) continue;
+            boolean isNbt = entry.getNbtData() != null;
+
+            // Include if: itemKey not in any named tab, OR has NBT (always uncategorized)
+            if (!isNbt && categorized.contains(itemKey)) continue;
 
             net.minecraft.item.Item item = Registries.ITEM.get(Identifier.of(itemKey));
             if (item == Items.AIR) continue;
@@ -262,7 +279,7 @@ public class StoragePanel {
                 continue;
             }
 
-            result.add(new StoragePanelHandler.SlotEntry(stack, itemKey, entry.getCount()));
+            result.add(new StoragePanelHandler.SlotEntry(stack, itemKey, entry.getCount(), entry.getNbtData()));
         }
         return result;
     }
@@ -341,6 +358,15 @@ public class StoragePanel {
 
         // Search field only visible when the Search tab is active
         if (tabKeys.get(currentTabIndex).equals(SEARCH_KEY)) {
+            // Draw a white input box matching vanilla creative search field appearance
+            int sfX = panelX + 80;
+            int sfY = panelY + 4;
+            int sfW = 82;
+            int sfH = 12;
+            // Outer dark border
+            ctx.fill(sfX - 1, sfY - 1, sfX + sfW + 1, sfY + sfH + 1, 0xFF373737);
+            // Inner white background
+            ctx.fill(sfX, sfY, sfX + sfW, sfY + sfH, 0xFFFFFFFF);
             searchField.render(ctx, mouseX, mouseY, delta);
         }
 
@@ -363,10 +389,13 @@ public class StoragePanel {
 
             StoragePanelHandler.SlotEntry entry = currentSlots.get(slotIndex);
 
-            if (mouseX >= sx && mouseX < sx + 16 && mouseY >= sy && mouseY < sy + 16) {
+            boolean hovered = mouseX >= sx && mouseX < sx + 16 && mouseY >= sy && mouseY < sy + 16;
+            if (entry.hasNbt()) {
+                ctx.fill(sx, sy, sx + 16, sy + 16, hovered ? HOVER_NBT_COLOR : NBT_TINT_COLOR);
+            } else if (hovered) {
                 ctx.fill(sx, sy, sx + 16, sy + 16, HOVER_COLOR);
-                hoveredSlot = slotIndex;
             }
+            if (hovered) hoveredSlot = slotIndex;
 
             GrayscaleRenderer.renderSlot(ctx, entry.displayStack, sx, sy, entry.isOwned());
             if (entry.isOwned()) {
@@ -374,11 +403,14 @@ public class StoragePanel {
             }
         }
 
-        // Tooltip
-        if (hoveredSlot >= 0 && hoveredSlot < currentSlots.size()) {
+        // Tooltip (suppress while picker is open)
+        if (!quantityPicker.isOpen() && hoveredSlot >= 0 && hoveredSlot < currentSlots.size()) {
             StoragePanelHandler.SlotEntry entry = currentSlots.get(hoveredSlot);
             ctx.drawItemTooltip(MinecraftClient.getInstance().textRenderer, entry.displayStack, mouseX, mouseY);
         }
+
+        // Quantity picker overlay (rendered last, on top of everything)
+        quantityPicker.render(ctx, mouseX, mouseY, delta);
     }
 
     private void renderAllTabs(DrawContext ctx, int mouseX, int mouseY, boolean selectedOnly) {
@@ -401,7 +433,7 @@ public class StoragePanel {
         int col = isTop ? tabIndex : (tabIndex - 7);
 
         int tabX = panelX + col * TAB_COL_STEP;
-        int tabY = isTop ? (panelY - TAB_Y_OFFSET) : (panelY + PANEL_CLIP_HEIGHT - 4);
+        int tabY = isTop ? (panelY - TAB_Y_OFFSET) : (panelY + PANEL_CLIP_HEIGHT);
 
         Identifier[] sprites = isTop
             ? (active ? TAB_TOP_SELECTED    : TAB_TOP_UNSELECTED)
@@ -444,6 +476,14 @@ public class StoragePanel {
         double mouseY = click.y();
         int button = click.button();
 
+        // Quantity picker takes priority
+        if (quantityPicker.isOpen()) {
+            boolean result = quantityPicker.mouseClicked(mouseX, mouseY, button);
+            // Picker just closed (confirm, cancel, or outside click) — suppress any deposit on release
+            if (!quantityPicker.isOpen()) suppressDepositOnRelease = true;
+            return result;
+        }
+
         // Tab click (above or below panel)
         int tabIdx = getTabAt(mouseX, mouseY);
         if (tabIdx >= 0) {
@@ -466,22 +506,14 @@ public class StoragePanel {
             return false;
         }
 
-        if (searchField.mouseClicked(click, consumed)) return true;
-
-        // If cursor is holding items, deposit them into storage instead of any other action
-        if (button == 0) {
-            MinecraftClient mc = MinecraftClient.getInstance();
-            if (mc.player != null) {
-                ItemStack cursor = mc.player.currentScreenHandler.getCursorStack();
-                if (!cursor.isEmpty()) {
-                    ModMessaging.sendDeposit(
-                        Registries.ITEM.getId(cursor.getItem()).toString(),
-                        cursor.getCount()
-                    );
-                    return true;
-                }
-            }
+        // Clicking inside the panel while on the search tab keeps the search field focused
+        if (tabKeys.get(currentTabIndex).equals(SEARCH_KEY)) {
+            searchField.setFocused(true);
         }
+
+        // Only let the search field handle clicks when it is visible (search tab active)
+        if (tabKeys.get(currentTabIndex).equals(SEARCH_KEY)
+                && searchField.mouseClicked(click, consumed)) return true;
 
         // Scrollbar click
         if (button == 0) {
@@ -516,20 +548,23 @@ public class StoragePanel {
                 long win = MinecraftClient.getInstance().getWindow().getHandle();
                 boolean shift = GLFW.glfwGetKey(win, GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS
                              || GLFW.glfwGetKey(win, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS;
-                int amount;
-                if (shift && button == 0) {
+                if (button == 1) {
+                    // Right click: open quantity picker
+                    quantityPicker.open(panelX, panelY, PANEL_WIDTH, entry);
+                } else if (shift && button == 0) {
                     // Shift+left: withdraw max stack to inventory
-                    amount = (int) Math.min((long) entry.displayStack.getItem().getMaxCount(), entry.count);
-                } else if (button == 1) {
-                    // Right click: half of available count
-                    amount = (int) Math.max(1L, entry.count / 2);
+                    int amount = (int) Math.min((long) entry.displayStack.getItem().getMaxCount(), entry.count);
+                    suppressDepositOnRelease = true;
+                    ModMessaging.sendWithdraw(entry.itemKey, amount, true);
                 } else {
-                    // Left click: single item
-                    amount = 1;
+                    // Left click: single item to cursor
+                    suppressDepositOnRelease = true;
+                    ModMessaging.sendWithdraw(entry.itemKey, 1, false);
                 }
-                ModMessaging.sendWithdraw(entry.itemKey, amount, shift);
+                return true;
             }
-            return true;
+            // Unowned slot: don't consume the click so vanilla can handle it cleanly
+            return false;
         }
 
         return false;
@@ -541,7 +576,7 @@ public class StoragePanel {
             boolean isTop = (i < 7);
             int col = isTop ? i : (i - 7);
             int tabX = panelX + col * TAB_COL_STEP;
-            int tabY = isTop ? (panelY - TAB_Y_OFFSET) : (panelY + PANEL_CLIP_HEIGHT - 4);
+            int tabY = isTop ? (panelY - TAB_Y_OFFSET) : (panelY + PANEL_CLIP_HEIGHT);
             if (mouseX >= tabX && mouseX < tabX + TAB_W && mouseY >= tabY && mouseY < tabY + TAB_H) {
                 return i;
             }
@@ -559,8 +594,14 @@ public class StoragePanel {
     }
 
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        // Picker handles its own releases (it blocks the panel entirely while open)
+        if (quantityPicker.isOpen()) return true;
+
+        // Capture and always reset the suppress flag on any release
+        boolean wasWithdraw = suppressDepositOnRelease;
+        suppressDepositOnRelease = false;
+
         if (button == 0) {
-            // Clean up drag states (also handled by GLFW poll in render, but be explicit here)
             isScrollbarDragging = false;
             if (isDragging) {
                 isDragging = false;
@@ -571,9 +612,10 @@ public class StoragePanel {
             }
         }
         // If releasing over our panel, consume the event and deposit any cursor items
+        // (unless the press was a slot withdraw — let the user carry the item out normally)
         if (mouseX >= panelX && mouseX < panelX + PANEL_WIDTH
                 && mouseY >= panelY && mouseY < panelY + PANEL_CLIP_HEIGHT) {
-            if (button == 0) {
+            if (button == 0 && !wasWithdraw) {
                 MinecraftClient mc = MinecraftClient.getInstance();
                 if (mc.player != null) {
                     ItemStack cursor = mc.player.currentScreenHandler.getCursorStack();
@@ -598,6 +640,7 @@ public class StoragePanel {
     }
 
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        if (quantityPicker.isOpen()) return true;
         int gridTop    = panelY + GRID_Y;
         int gridBottom = gridTop + VISIBLE_ROWS * SLOT_SIZE;
         if (mouseX < panelX || mouseX > panelX + PANEL_WIDTH || mouseY < gridTop || mouseY > gridBottom) {
@@ -610,12 +653,33 @@ public class StoragePanel {
     }
 
     public boolean charTyped(CharInput charInput) {
-        return searchField.charTyped(charInput);
+        if (quantityPicker.isOpen()) return quantityPicker.charTyped(charInput);
+        if (!tabKeys.get(currentTabIndex).equals(SEARCH_KEY)) return false;
+        if (!searchField.isFocused()) searchField.setFocused(true);
+
+        // Try TextFieldWidget's own charTyped first
+        if (searchField.charTyped(charInput)) return true;
+
+        // Fallback: insert character directly using CharInput.asString()
+        if (charInput.isValidChar()) {
+            int cursor = searchField.getCursor();
+            String current = searchField.getText();
+            String next = current.substring(0, cursor) + charInput.asString() + current.substring(cursor);
+            searchField.setText(next);
+            searchField.setCursorToEnd(false);
+            return true;
+        }
+        return false;
     }
 
     // When search field is focused, consume all key presses to prevent accidental
     // inventory hotkey triggers. Escape unfocuses the field.
     public boolean keyPressed(KeyInput keyInput) {
+        if (quantityPicker.isOpen()) {
+            boolean result = quantityPicker.keyPressed(keyInput);
+            if (!quantityPicker.isOpen()) suppressDepositOnRelease = true;
+            return result;
+        }
         if (searchField.isFocused()) {
             if (keyInput.key() == GLFW.GLFW_KEY_ESCAPE) {
                 searchField.setFocused(false);

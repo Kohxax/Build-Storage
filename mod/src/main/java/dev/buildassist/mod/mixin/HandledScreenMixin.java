@@ -9,6 +9,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.registry.Registries;
 import net.minecraft.screen.slot.Slot;
 import net.minecraft.screen.slot.SlotActionType;
+import org.lwjgl.glfw.GLFW;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -51,9 +52,15 @@ public class HandledScreenMixin {
             return;
         }
 
-        // Shift+click: deposit the clicked slot's item into storage
-        if (actionType != SlotActionType.QUICK_MOVE) return;
+        // Ctrl+left-click: deposit the clicked slot's item into storage
+        // Plain Shift+click is left as vanilla (hotbar ↔ inventory move)
+        if (button != 0 || actionType != SlotActionType.PICKUP) return;
         if (slot.getStack().isEmpty()) return;
+
+        long win = MinecraftClient.getInstance().getWindow().getHandle();
+        boolean ctrl = GLFW.glfwGetKey(win, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS
+                    || GLFW.glfwGetKey(win, GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
+        if (!ctrl) return;
 
         ItemStack stack = slot.getStack();
         ModMessaging.sendDeposit(
@@ -62,4 +69,5 @@ public class HandledScreenMixin {
         );
         ci.cancel();
     }
+
 }

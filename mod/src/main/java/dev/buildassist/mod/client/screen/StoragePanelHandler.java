@@ -18,15 +18,25 @@ public class StoragePanelHandler {
         public final ItemStack displayStack;
         public final String itemKey;
         public final long count;
+        public final String nbtData; // non-null for NBT-tagged items in uncategorized tab
 
         public SlotEntry(ItemStack displayStack, String itemKey, long count) {
+            this(displayStack, itemKey, count, null);
+        }
+
+        public SlotEntry(ItemStack displayStack, String itemKey, long count, String nbtData) {
             this.displayStack = displayStack;
             this.itemKey = itemKey;
             this.count = count;
+            this.nbtData = nbtData;
         }
 
         public boolean isOwned() {
             return count > 0;
+        }
+
+        public boolean hasNbt() {
+            return nbtData != null;
         }
     }
 

@@ -112,18 +112,17 @@ public class PluginMessaging implements PluginMessageListener {
             int amount = extractJsonInt(json, "amount");
             if (itemKey == null || amount <= 0) return;
 
-            Material mat = Material.matchMaterial(itemKey);
-            if (mat == null) return;
-
             PlayerStorage storage = storageManager.get(player);
-            ItemStack depositItem = new ItemStack(mat, amount);
-            if (storage.deposit(depositItem)) {
-                // Remove from cursor first (panel deposits cursor items), then from inventory
-                int remaining = amount;
-                ItemStack cursor = player.getItemOnCursor();
-                if (cursor != null && !cursor.getType().isAir()
-                        && cursor.getType().getKey().toString().equals(itemKey)) {
-                    int take = Math.min(cursor.getAmount(), remaining);
+            int remaining = amount;
+
+            // Deposit cursor item first (preserves NBT)
+            ItemStack cursor = player.getItemOnCursor();
+            if (cursor != null && !cursor.getType().isAir()
+                    && cursor.getType().getKey().toString().equals(itemKey)) {
+                int take = Math.min(cursor.getAmount(), remaining);
+                ItemStack toDeposit = cursor.clone();
+                toDeposit.setAmount(take);
+                if (storage.deposit(toDeposit)) {
                     int newCursorAmount = cursor.getAmount() - take;
                     if (newCursorAmount <= 0) {
                         player.setItemOnCursor(new ItemStack(Material.AIR));
@@ -133,11 +132,31 @@ public class PluginMessaging implements PluginMessageListener {
                     }
                     remaining -= take;
                 }
-                if (remaining > 0) {
-                    player.getInventory().removeItem(new ItemStack(mat, remaining));
-                }
-                sendStorageUpdate(player, storage);
             }
+
+            // Then deposit from inventory slots (preserves NBT per slot)
+            if (remaining > 0) {
+                ItemStack[] contents = player.getInventory().getContents();
+                for (int i = 0; i < contents.length && remaining > 0; i++) {
+                    ItemStack slot = contents[i];
+                    if (slot == null || slot.getType().isAir()) continue;
+                    if (!slot.getType().getKey().toString().equals(itemKey)) continue;
+                    int take = Math.min(slot.getAmount(), remaining);
+                    ItemStack toDeposit = slot.clone();
+                    toDeposit.setAmount(take);
+                    if (storage.deposit(toDeposit)) {
+                        int newSlotAmount = slot.getAmount() - take;
+                        if (newSlotAmount <= 0) {
+                            player.getInventory().setItem(i, new ItemStack(Material.AIR));
+                        } else {
+                            slot.setAmount(newSlotAmount);
+                        }
+                        remaining -= take;
+                    }
+                }
+            }
+
+            sendStorageUpdate(player, storage);
         } catch (Exception e) {
             plugin.getLogger().warning("Deposit error for " + player.getName() + ": " + e.getMessage());
         }

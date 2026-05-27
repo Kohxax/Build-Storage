@@ -93,42 +93,77 @@ public class StorageDatabase {
         return 0;
     }
 
-    // Adds (positive) or removes (negative delta) items. Returns false if insufficient stock.
+    // Adds (positive delta) or removes (negative delta) items. Returns false if insufficient stock.
     public boolean adjustCount(UUID playerUuid, String itemKey, String nbtData, long delta) {
         try {
-            connection.setAutoCommit(false);
-            long current = getCount(playerUuid, itemKey, nbtData);
-            long newCount = current + delta;
-            if (newCount < 0) {
-                connection.setAutoCommit(true);
-                return false;
+            if (delta > 0) {
+                return deposit(playerUuid, itemKey, nbtData, delta);
+            } else {
+                return withdraw(playerUuid, itemKey, nbtData, -delta);
             }
-            if (current == 0 && delta > 0) {
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to adjust count: " + e.getMessage() + " [item=" + itemKey + "]", e);
+        }
+    }
+
+    private boolean deposit(UUID playerUuid, String itemKey, String nbtData, long amount) throws SQLException {
+        if (nbtData != null) {
+            // Non-null nbt_data: SQLite UPSERT handles both insert and update atomically
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "INSERT INTO player_storage(player_uuid,item_key,nbt_data,count) VALUES(?,?,?,?) " +
+                    "ON CONFLICT(player_uuid,item_key,nbt_data) DO UPDATE SET count=count+excluded.count")) {
+                ps.setString(1, playerUuid.toString());
+                ps.setString(2, itemKey);
+                ps.setString(3, nbtData);
+                ps.setLong(4, amount);
+                ps.executeUpdate();
+            }
+        } else {
+            // NULL nbt_data: SQLite UNIQUE treats NULLs as distinct so UPSERT won't merge.
+            // Use explicit existence check to avoid creating duplicate null rows.
+            boolean exists;
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "SELECT 1 FROM player_storage WHERE player_uuid=? AND item_key=? AND nbt_data IS NULL LIMIT 1")) {
+                ps.setString(1, playerUuid.toString());
+                ps.setString(2, itemKey);
+                try (ResultSet rs = ps.executeQuery()) { exists = rs.next(); }
+            }
+            if (exists) {
                 try (PreparedStatement ps = connection.prepareStatement(
-                        "INSERT INTO player_storage(player_uuid, item_key, nbt_data, count) VALUES(?,?,?,?)")) {
-                    ps.setString(1, playerUuid.toString());
-                    ps.setString(2, itemKey);
-                    ps.setString(3, nbtData);
-                    ps.setLong(4, newCount);
+                        "UPDATE player_storage SET count=count+? WHERE player_uuid=? AND item_key=? AND nbt_data IS NULL")) {
+                    ps.setLong(1, amount);
+                    ps.setString(2, playerUuid.toString());
+                    ps.setString(3, itemKey);
                     ps.executeUpdate();
                 }
             } else {
                 try (PreparedStatement ps = connection.prepareStatement(
-                        "UPDATE player_storage SET count = ? WHERE player_uuid = ? AND item_key = ? AND (nbt_data IS ? OR nbt_data = ?)")) {
-                    ps.setLong(1, newCount);
-                    ps.setString(2, playerUuid.toString());
-                    ps.setString(3, itemKey);
-                    ps.setString(4, nbtData);
-                    ps.setString(5, nbtData);
+                        "INSERT INTO player_storage(player_uuid,item_key,nbt_data,count) VALUES(?,?,NULL,?)")) {
+                    ps.setString(1, playerUuid.toString());
+                    ps.setString(2, itemKey);
+                    ps.setLong(3, amount);
                     ps.executeUpdate();
                 }
             }
-            connection.commit();
-            connection.setAutoCommit(true);
-            return true;
-        } catch (SQLException e) {
-            try { connection.rollback(); connection.setAutoCommit(true); } catch (SQLException ignored) {}
-            throw new RuntimeException("Failed to adjust count", e);
+        }
+        return true;
+    }
+
+    private boolean withdraw(UUID playerUuid, String itemKey, String nbtData, long amount) throws SQLException {
+        String sql = nbtData != null
+            ? "UPDATE player_storage SET count=count-? WHERE player_uuid=? AND item_key=? AND nbt_data=? AND count>=?"
+            : "UPDATE player_storage SET count=count-? WHERE player_uuid=? AND item_key=? AND nbt_data IS NULL AND count>=?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setLong(1, amount);
+            ps.setString(2, playerUuid.toString());
+            ps.setString(3, itemKey);
+            if (nbtData != null) {
+                ps.setString(4, nbtData);
+                ps.setLong(5, amount);
+            } else {
+                ps.setLong(4, amount);
+            }
+            return ps.executeUpdate() > 0;
         }
     }
 }

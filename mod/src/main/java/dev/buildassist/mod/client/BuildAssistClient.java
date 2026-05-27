@@ -57,6 +57,12 @@ public class BuildAssistClient implements ClientModInitializer {
             StoragePanel panel = activePanel;
             return panel == null || !panel.keyPressed(keyInput);
         });
+
+        ScreenMouseEvents.allowMouseRelease(screen).register((s, click) -> {
+            StoragePanel panel = activePanel;
+            if (panel == null) return true;
+            return !panel.mouseReleased(click.x(), click.y(), click.button());
+        });
     }
 
     public static void onInventoryClose() {
