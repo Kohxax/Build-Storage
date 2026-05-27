@@ -68,6 +68,13 @@ public class StoragePanel {
     private static final RegistryKey<ItemGroup> SEARCH_KEY =
         RegistryKey.of(RegistryKeys.ITEM_GROUP, Identifier.of("buildassist", "search"));
 
+    private static final Set<RegistryKey<ItemGroup>> BLOCKED_TABS = Set.of(
+        ItemGroups.TOOLS,
+        ItemGroups.COMBAT,
+        ItemGroups.FOOD_AND_DRINK,
+        ItemGroups.INGREDIENTS
+    );
+
     private static final Identifier SCROLLER =
         Identifier.ofVanilla("container/creative_inventory/scroller");
     private static final Identifier SCROLLER_DISABLED =
@@ -135,6 +142,7 @@ public class StoragePanel {
     private boolean isScrollbarDragging = false;
 
     private boolean suppressDepositOnRelease = false;
+    private long withdrawLockUntil = 0;
 
     private final QuantityPickerOverlay quantityPicker = new QuantityPickerOverlay();
 
@@ -177,10 +185,6 @@ public class StoragePanel {
         tabKeys.add(ItemGroups.NATURAL);
         tabKeys.add(ItemGroups.FUNCTIONAL);
         tabKeys.add(ItemGroups.REDSTONE);
-        tabKeys.add(ItemGroups.TOOLS);
-        tabKeys.add(ItemGroups.COMBAT);
-        tabKeys.add(ItemGroups.FOOD_AND_DRINK);
-        tabKeys.add(ItemGroups.INGREDIENTS);
         tabKeys.add(UNCATEGORIZED_KEY);
         tabKeys.add(SEARCH_KEY);
     }
@@ -240,6 +244,7 @@ public class StoragePanel {
         var registryOpt = client.world.getRegistryManager().getOptional(RegistryKeys.ITEM_GROUP);
 
         Set<String> categorized = new HashSet<>();
+        Set<String> blocked = new HashSet<>();
         if (registryOpt.isPresent()) {
             for (RegistryKey<ItemGroup> key : tabKeys) {
                 if (key.equals(UNCATEGORIZED_KEY) || key.equals(SEARCH_KEY)) continue;
@@ -247,6 +252,13 @@ public class StoragePanel {
                 if (group == null) continue;
                 for (ItemStack stack : group.getDisplayStacks()) {
                     categorized.add(Registries.ITEM.getId(stack.getItem()).toString());
+                }
+            }
+            for (RegistryKey<ItemGroup> key : BLOCKED_TABS) {
+                var group = registryOpt.get().get(key);
+                if (group == null) continue;
+                for (ItemStack stack : group.getDisplayStacks()) {
+                    blocked.add(Registries.ITEM.getId(stack.getItem()).toString());
                 }
             }
         }
@@ -258,7 +270,7 @@ public class StoragePanel {
             String itemKey = entry.getItemKey();
             boolean isNbt = entry.getNbtData() != null;
 
-            if (!isNbt && categorized.contains(itemKey)) continue;
+            if (!isNbt && (categorized.contains(itemKey) || blocked.contains(itemKey))) continue;
 
             net.minecraft.item.Item item = Registries.ITEM.get(Identifier.of(itemKey));
             if (item == Items.AIR) continue;
@@ -278,10 +290,13 @@ public class StoragePanel {
     }
 
     private List<StoragePanelHandler.SlotEntry> buildSearchSlots() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        Set<String> blocked = buildBlockedItemIds(client);
         String lowerSearch = searchQuery.toLowerCase();
         List<StoragePanelHandler.SlotEntry> result = new ArrayList<>();
         for (StorageEntry entry : cache.getAll()) {
             String itemKey = entry.getItemKey();
+            if (entry.getNbtData() == null && blocked.contains(itemKey)) continue;
             ItemStack stack = buildDisplayStack(entry);
             if (stack.isEmpty()) continue;
             if (!lowerSearch.isEmpty()) {
@@ -291,6 +306,26 @@ public class StoragePanel {
             result.add(new StoragePanelHandler.SlotEntry(stack, itemKey, entry.getCount(), entry.getNbtData()));
         }
         return result;
+    }
+
+    private Set<String> buildBlockedItemIds(MinecraftClient client) {
+        Set<String> blocked = new HashSet<>();
+        if (client.world == null) return blocked;
+        var reg = client.world.getRegistryManager().getOptional(RegistryKeys.ITEM_GROUP);
+        if (reg.isEmpty()) return blocked;
+        for (RegistryKey<ItemGroup> key : BLOCKED_TABS) {
+            var group = reg.get().get(key);
+            if (group == null) continue;
+            for (ItemStack stack : group.getDisplayStacks()) {
+                blocked.add(Registries.ITEM.getId(stack.getItem()).toString());
+            }
+        }
+        return blocked;
+    }
+
+    private boolean isDepositBlocked(ItemStack stack) {
+        String itemKey = Registries.ITEM.getId(stack.getItem()).toString();
+        return buildBlockedItemIds(MinecraftClient.getInstance()).contains(itemKey);
     }
 
     // Builds an ItemStack with display components (name, enchantments, lore) applied from StorageEntry.
@@ -545,9 +580,23 @@ public class StoragePanel {
         double mouseY = click.y();
         int button = click.button();
 
+        if (withdrawLockUntil > 0) {
+            if (System.currentTimeMillis() < withdrawLockUntil) {
+                if (mouseX < panelX || mouseX >= panelX + PANEL_WIDTH
+                        || mouseY < panelY || mouseY >= panelY + PANEL_CLIP_HEIGHT) {
+                    return true;
+                }
+            } else {
+                withdrawLockUntil = 0;
+            }
+        }
+
         if (quantityPicker.isOpen()) {
             boolean result = quantityPicker.mouseClicked(mouseX, mouseY, button);
-            if (!quantityPicker.isOpen()) suppressDepositOnRelease = true;
+            if (!quantityPicker.isOpen()) {
+                suppressDepositOnRelease = true;
+                if (quantityPicker.wasLastShift()) withdrawLockUntil = System.currentTimeMillis() + 300;
+            }
             return result;
         }
 
@@ -612,6 +661,7 @@ public class StoragePanel {
                 } else if (shift && button == 0) {
                     int amount = (int) Math.min((long) entry.displayStack.getItem().getMaxCount(), entry.count);
                     suppressDepositOnRelease = true;
+                    withdrawLockUntil = System.currentTimeMillis() + 300;
                     ModMessaging.sendWithdraw(entry.itemKey, amount, true);
                 } else {
                     suppressDepositOnRelease = true;
@@ -671,7 +721,7 @@ public class StoragePanel {
                 MinecraftClient mc = MinecraftClient.getInstance();
                 if (mc.player != null) {
                     ItemStack cursor = mc.player.currentScreenHandler.getCursorStack();
-                    if (!cursor.isEmpty()) {
+                    if (!cursor.isEmpty() && !isDepositBlocked(cursor)) {
                         ModMessaging.sendDeposit(
                             Registries.ITEM.getId(cursor.getItem()).toString(),
                             cursor.getCount()
@@ -725,7 +775,10 @@ public class StoragePanel {
     public boolean keyPressed(KeyInput keyInput) {
         if (quantityPicker.isOpen()) {
             boolean result = quantityPicker.keyPressed(keyInput);
-            if (!quantityPicker.isOpen()) suppressDepositOnRelease = true;
+            if (!quantityPicker.isOpen()) {
+                suppressDepositOnRelease = true;
+                if (quantityPicker.wasLastShift()) withdrawLockUntil = System.currentTimeMillis() + 300;
+            }
             return result;
         }
         if (searchField.isFocused()) {

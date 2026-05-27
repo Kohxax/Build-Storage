@@ -1,6 +1,7 @@
 package dev.buildassist.mod.network;
 
 import dev.buildassist.mod.BuildAssistMod;
+import dev.buildassist.mod.client.BuildAssistClient;
 import dev.buildassist.mod.client.StorageCache;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 
@@ -47,7 +48,11 @@ public class ModMessaging {
 
     private static void handlePacket(String packetId, String json) {
         switch (packetId) {
-            case "storage_contents", "storage_update" -> StorageCache.INSTANCE.update(json);
+            case "storage_contents" -> {
+                StorageCache.INSTANCE.update(json);
+                BuildAssistClient.onStorageContentsReceived();
+            }
+            case "storage_update" -> StorageCache.INSTANCE.update(json);
         }
     }
 }

@@ -31,6 +31,7 @@ public class QuantityPickerOverlay {
     private StoragePanelHandler.SlotEntry entry;
     private TextFieldWidget amountField;
     private boolean open = false;
+    private boolean lastSentShift = false;
 
     private int ox, oy;
 
@@ -39,6 +40,7 @@ public class QuantityPickerOverlay {
     private long lastRepeatMs = 0L;
 
     public boolean isOpen() { return open; }
+    public boolean wasLastShift() { return lastSentShift; }
 
     public void open(int panelX, int panelY, int panelW, StoragePanelHandler.SlotEntry entry) {
         this.entry = entry;
@@ -201,10 +203,8 @@ public class QuantityPickerOverlay {
                 int amount = resolveAmount();
                 if (amount > 0) {
                     int maxStack = entry.displayStack.getItem().getMaxCount();
-                    // Use shift=false (cursor) for single-stack amounts so the item
-                    // lands on the cursor like a normal left-click.  Use shift=true
-                    // (inventory) only when the total exceeds one stack.
                     boolean shift = amount > maxStack;
+                    lastSentShift = shift;
                     ModMessaging.sendWithdraw(entry.itemKey, amount, shift);
                     close();
                 }
@@ -245,6 +245,7 @@ public class QuantityPickerOverlay {
             if (amount > 0) {
                 int maxStack = entry.displayStack.getItem().getMaxCount();
                 boolean shift = amount > maxStack;
+                lastSentShift = shift;
                 ModMessaging.sendWithdraw(entry.itemKey, amount, shift);
                 close();
             }

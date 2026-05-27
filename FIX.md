@@ -1,28 +1,28 @@
-43. [未解決] 2スタック以上をピッカー（右クリックメニュー）から取り出した後、サバイバルインベントリ内のアイテムを拾うために左クリックを2回押す必要がある。
+43. [解決済み] 2スタック以上をピッカー（右クリックメニュー）から取り出した後、サバイバルインベントリ内のアイテムを拾うために左クリックを2回押す必要がある。
 
-    【根本原因の推測】
-    ピッカーで amount > maxStack の場合 shift=true で sendWithdraw を送る（アイテムがインベントリに直接入る）。
-    サーバーはインベントリを更新してスロット更新パケットをクライアントに送り返すが、
-    クライアントがそのパケットを受け取る前にユーザーがスロットをクリックしてしまうと、
-    クライアント側ではまだスロットが空に見えているため HandledScreen のクライアント予測が空振りする。
-    サーバー応答が届いてスロットが埋まった後の2回目クリックで初めて有効になる、
-    という送受信タイミングのレースコンディションが原因と考えられる。
+    【根本原因】
+    shift=true の sendWithdraw 送信後、サーバーのスロット更新パケットが届く前にユーザーがクリックすると
+    HandledScreen のクライアント予測が空振りするレースコンディション。
 
-    【試みた修正と失敗】
-    mouseReleased で wasWithdraw=true かつパネル内のとき return false（HandledScreen に release を渡す）に変更したが、
-    HandledScreen が想定外の release イベントを受け取ったことで次のクリックが長押しドラッグ扱いになり悪化したためリバートした。
+    【解決策】
+    shift=true の sendWithdraw 送信直後に withdrawLockUntil = currentTimeMillis() + 300 をセットし、
+    300ms 間パネル外へのマウスクリックを StoragePanel.mouseClicked で消費（return true）してブロックする。
+    shift+click（StoragePanel）・ピッカー確定ボタン・ピッカーEnterキーの3ルートすべてに対応。
+    QuantityPickerOverlay に wasLastShift() を追加し、StoragePanel がピッカー close 後にシフト判定を取得できるようにした。
 
-    【解決の方向性】
-    - withdraw 確定後にクライアント側でスロットを楽観的更新（optimistic update）する
-    - または withdraw 応答パケットを受け取ったタイミングで UI 側にフラグを立て、
-      その間のインベントリクリックを一時ブロックする（UX的に微妙）
-    - サーバー側 withdraw 応答パケットに「どのスロットに入ったか」を含めてクライアントで即時反映する方法が最も確実
+48. [解決済み] サーバー側にプラグインが存在しないときはクリエイティブインベントリを表示しないようにする（シングルプレイでも同様）
 
-47. [解決済み] インベントリをEで開いてからEをもう一度押しても閉じない。ESCを押しても閉じない。インベントリUI以外の場所をクリックしてからESCやEを押すことで閉じることができるので修正したい。
+    【解決策】
+    BuildAssistClient に pluginDetected フラグを追加。
+    storage_contents パケット受信時（ModMessaging → BuildAssistClient.onStorageContentsReceived）に true をセットし、
+    パネルを遅延生成する。disconnect 時にリセット。
+    プラグイン未導入のサーバーでは storage_contents が来ないのでパネルは表示されない。
 
-    【原因】buildSearchField() の末尾で searchField.setFocused(true) を呼んでいたため、
-    パネル初期化時に常に検索フィールドがフォーカス状態になっていた。
-    keyPressed() は searchField.isFocused() == true の場合に全キーを消費するため、
-    EもESCもバニラのインベントリ閉鎖処理に届かなかった。
+49. [解決済み] ゲームバランス調整 — 建築ブロック系のみ許可
 
-    【修正】StoragePanel.java:205 setFocused(true) → setFocused(false)
+    【解決策】
+    TOOLS / COMBAT / FOOD_AND_DRINK / INGREDIENTS タブを initTabs() から削除。
+    BLOCKED_TABS 定数（上記4グループ）を StoragePanel に追加し、
+    - UNCATEGORIZED タブ: blocked に属するアイテムを除外（タブ削除で落ちてきたアイテムが表示されないよう）
+    - SEARCH タブ: blocked に属するアイテムを除外
+    - mouseReleased のデポジット処理: isDepositBlocked() で blocked アイテムのストックを拒否

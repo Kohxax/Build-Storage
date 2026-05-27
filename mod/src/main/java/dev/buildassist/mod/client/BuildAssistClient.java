@@ -10,12 +10,14 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 
 public class BuildAssistClient implements ClientModInitializer {
 
     private static StoragePanel activePanel;
     private static Runnable activePanelListener;
+    private static boolean pluginDetected = false;
 
     @Override
     public void onInitializeClient() {
@@ -24,6 +26,7 @@ public class BuildAssistClient implements ClientModInitializer {
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             StorageCache.INSTANCE.clear();
+            pluginDetected = false;
             closePanel();
         });
 
@@ -39,9 +42,6 @@ public class BuildAssistClient implements ClientModInitializer {
     public static void onInventoryOpen(InventoryScreen screen) {
         closePanel();
         ModMessaging.sendOpenStorage();
-        activePanel = new StoragePanel(screen, BuildAssistConfig.get());
-        activePanelListener = activePanel::onStorageUpdate;
-        StorageCache.INSTANCE.addListener(activePanelListener);
 
         ScreenMouseEvents.allowMouseClick(screen).register((s, click) -> {
             StoragePanel panel = activePanel;
@@ -63,6 +63,24 @@ public class BuildAssistClient implements ClientModInitializer {
             if (panel == null) return true;
             return !panel.mouseReleased(click.x(), click.y(), click.button());
         });
+
+        if (pluginDetected) {
+            createPanel(screen);
+        }
+    }
+
+    public static void onStorageContentsReceived() {
+        pluginDetected = true;
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (activePanel == null && mc.currentScreen instanceof InventoryScreen inv) {
+            createPanel(inv);
+        }
+    }
+
+    private static void createPanel(InventoryScreen screen) {
+        activePanel = new StoragePanel(screen, BuildAssistConfig.get());
+        activePanelListener = activePanel::onStorageUpdate;
+        StorageCache.INSTANCE.addListener(activePanelListener);
     }
 
     public static void onInventoryClose() {
