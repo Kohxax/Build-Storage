@@ -142,6 +142,7 @@ public class StoragePanel {
     private boolean isScrollbarDragging = false;
 
     private boolean suppressDepositOnRelease = false;
+    private boolean pendingShiftWithdraw = false;
     private long withdrawLockUntil = 0;
 
     private final QuantityPickerOverlay quantityPicker = new QuantityPickerOverlay();
@@ -595,7 +596,10 @@ public class StoragePanel {
             boolean result = quantityPicker.mouseClicked(mouseX, mouseY, button);
             if (!quantityPicker.isOpen()) {
                 suppressDepositOnRelease = true;
-                if (quantityPicker.wasLastShift()) withdrawLockUntil = System.currentTimeMillis() + 300;
+                if (quantityPicker.wasLastShift()) {
+                    pendingShiftWithdraw = true;
+                    withdrawLockUntil = System.currentTimeMillis() + 1000;
+                }
             }
             return result;
         }
@@ -661,7 +665,8 @@ public class StoragePanel {
                 } else if (shift && button == 0) {
                     int amount = (int) Math.min((long) entry.displayStack.getItem().getMaxCount(), entry.count);
                     suppressDepositOnRelease = true;
-                    withdrawLockUntil = System.currentTimeMillis() + 300;
+                    pendingShiftWithdraw = true;
+                    withdrawLockUntil = System.currentTimeMillis() + 1000;
                     ModMessaging.sendWithdraw(entry.itemKey, amount, true);
                 } else {
                     suppressDepositOnRelease = true;
@@ -777,7 +782,10 @@ public class StoragePanel {
             boolean result = quantityPicker.keyPressed(keyInput);
             if (!quantityPicker.isOpen()) {
                 suppressDepositOnRelease = true;
-                if (quantityPicker.wasLastShift()) withdrawLockUntil = System.currentTimeMillis() + 300;
+                if (quantityPicker.wasLastShift()) {
+                    pendingShiftWithdraw = true;
+                    withdrawLockUntil = System.currentTimeMillis() + 1000;
+                }
             }
             return result;
         }
@@ -798,6 +806,10 @@ public class StoragePanel {
     }
 
     public void onStorageUpdate() {
+        if (pendingShiftWithdraw) {
+            pendingShiftWithdraw = false;
+            withdrawLockUntil = System.currentTimeMillis() + 100;
+        }
         refreshSlots();
     }
 }
