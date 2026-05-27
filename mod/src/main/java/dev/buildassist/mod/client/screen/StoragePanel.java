@@ -670,6 +670,8 @@ public class StoragePanel {
                     ModMessaging.sendWithdraw(entry.itemKey, amount, true);
                 } else {
                     suppressDepositOnRelease = true;
+                    pendingShiftWithdraw = true;
+                    withdrawLockUntil = System.currentTimeMillis() + 1000;
                     ModMessaging.sendWithdraw(entry.itemKey, 1, false);
                 }
                 return true;
@@ -727,6 +729,8 @@ public class StoragePanel {
                 if (mc.player != null) {
                     ItemStack cursor = mc.player.currentScreenHandler.getCursorStack();
                     if (!cursor.isEmpty() && !isDepositBlocked(cursor)) {
+                        pendingShiftWithdraw = true;
+                        withdrawLockUntil = System.currentTimeMillis() + 1000;
                         ModMessaging.sendDeposit(
                             Registries.ITEM.getId(cursor.getItem()).toString(),
                             cursor.getCount()
@@ -808,7 +812,7 @@ public class StoragePanel {
     public void onStorageUpdate() {
         if (pendingShiftWithdraw) {
             pendingShiftWithdraw = false;
-            withdrawLockUntil = System.currentTimeMillis() + 100;
+            withdrawLockUntil = System.currentTimeMillis() + 50;
         }
         refreshSlots();
     }
