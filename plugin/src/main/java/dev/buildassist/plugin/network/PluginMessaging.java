@@ -139,7 +139,7 @@ public class PluginMessaging implements PluginMessageListener {
                 }
             }
 
-            // Then deposit from inventory slots (preserves NBT per slot)
+            // Then deposit from player inventory slots (preserves NBT per slot)
             if (remaining > 0) {
                 ItemStack[] contents = player.getInventory().getContents();
                 for (int i = 0; i < contents.length && remaining > 0; i++) {
@@ -153,6 +153,29 @@ public class PluginMessaging implements PluginMessageListener {
                         int newSlotAmount = slot.getAmount() - take;
                         if (newSlotAmount <= 0) {
                             player.getInventory().setItem(i, new ItemStack(Material.AIR));
+                        } else {
+                            slot.setAmount(newSlotAmount);
+                        }
+                        remaining -= take;
+                    }
+                }
+            }
+
+            // Also deposit from the open container (chest, barrel, etc.)
+            if (remaining > 0) {
+                org.bukkit.inventory.Inventory top = player.getOpenInventory().getTopInventory();
+                ItemStack[] topContents = top.getContents();
+                for (int i = 0; i < topContents.length && remaining > 0; i++) {
+                    ItemStack slot = topContents[i];
+                    if (slot == null || slot.getType().isAir()) continue;
+                    if (!slot.getType().getKey().toString().equals(itemKey)) continue;
+                    int take = Math.min(slot.getAmount(), remaining);
+                    ItemStack toDeposit = slot.clone();
+                    toDeposit.setAmount(take);
+                    if (storage.deposit(toDeposit)) {
+                        int newSlotAmount = slot.getAmount() - take;
+                        if (newSlotAmount <= 0) {
+                            top.setItem(i, new ItemStack(Material.AIR));
                         } else {
                             slot.setAmount(newSlotAmount);
                         }
