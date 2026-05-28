@@ -76,6 +76,15 @@ public class StoragePanel {
         ItemGroups.INGREDIENTS
     );
 
+    // Tabs whose items are allowed to be deposited into storage.
+    private static final List<RegistryKey<ItemGroup>> STORABLE_TABS = List.of(
+        ItemGroups.BUILDING_BLOCKS,
+        ItemGroups.COLORED_BLOCKS,
+        ItemGroups.NATURAL,
+        ItemGroups.FUNCTIONAL,
+        ItemGroups.REDSTONE
+    );
+
     private static final Identifier SCROLLER =
         Identifier.ofVanilla("container/creative_inventory/scroller");
     private static final Identifier SCROLLER_DISABLED =
@@ -336,8 +345,21 @@ public class StoragePanel {
     }
 
     public static boolean isDepositBlocked(ItemStack stack) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.world == null) return false;
+        var reg = client.world.getRegistryManager().getOptional(RegistryKeys.ITEM_GROUP);
+        if (reg.isEmpty()) return false;
         String itemKey = Registries.ITEM.getId(stack.getItem()).toString();
-        return buildBlockedItemIds(MinecraftClient.getInstance()).contains(itemKey);
+        for (RegistryKey<ItemGroup> key : STORABLE_TABS) {
+            var group = reg.get().get(key);
+            if (group == null) continue;
+            for (ItemStack tabStack : group.getDisplayStacks()) {
+                if (itemKey.equals(Registries.ITEM.getId(tabStack.getItem()).toString())) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     // Builds an ItemStack with display components (name, enchantments, lore) applied from StorageEntry.
