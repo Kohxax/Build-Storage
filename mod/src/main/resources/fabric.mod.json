@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "buildassist",
-  "version": "1.1.12",
+  "version": "1.1.13",
   "name": "BuildAssist",
   "description": "Unified virtual storage system for builders",
   "authors": ["buildassist"],

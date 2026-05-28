@@ -94,7 +94,6 @@ public class HandledScreenMixin {
         if (!ctrl) { baCtrlDragging = false; return; }
         Slot slot = getSlotAt(click.x(), click.y());
         if (slot == null || slot.getStack().isEmpty()) return;
-        if (!(slot.inventory instanceof PlayerInventory)) return;
         if (!baCtrlDraggedSlots.add(slot.id)) return;
         ItemStack stack = slot.getStack();
         ModMessaging.sendDeposit(Registries.ITEM.getId(stack.getItem()).toString(), stack.getCount());
@@ -143,10 +142,7 @@ public class HandledScreenMixin {
             return;
         }
 
-        // Only act on player-inventory slots (not container/chest slots).
-        if (!(slot.inventory instanceof PlayerInventory)) return;
-
-        // Ctrl+double-click: deposit all items of that type from player inventory.
+        // Ctrl+double-click: deposit all items of that type from the open container.
         if (actionType == SlotActionType.PICKUP_ALL && !slot.getStack().isEmpty()) {
             long win = MinecraftClient.getInstance().getWindow().getHandle();
             boolean ctrl = GLFW.glfwGetKey(win, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS
@@ -187,11 +183,10 @@ public class HandledScreenMixin {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player == null) return 0;
         int total = 0;
-        // Iterate main inventory slots (0-35: hotbar 0-8 + main 9-35)
-        for (int i = 0; i < 36; i++) {
-            ItemStack s = mc.player.getInventory().getStack(i);
-            if (!s.isEmpty() && Registries.ITEM.getId(s.getItem()).toString().equals(itemKey)) {
-                total += s.getCount();
+        for (Slot s : mc.player.currentScreenHandler.slots) {
+            ItemStack stack = s.getStack();
+            if (!stack.isEmpty() && Registries.ITEM.getId(stack.getItem()).toString().equals(itemKey)) {
+                total += stack.getCount();
             }
         }
         ItemStack cursor = mc.player.currentScreenHandler.getCursorStack();
