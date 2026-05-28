@@ -284,7 +284,8 @@ public class QuantityPickerOverlay {
             if (value <= 0) return -1;
             int maxStack = entry.displayStack.getItem().getMaxCount();
             long actual = mode == Mode.STACK ? (long) value * maxStack : value;
-            return (int) Math.min(actual, entry.count);
+            long clamped = Math.min(actual, entry.count);
+            return (int) Math.min(clamped, Integer.MAX_VALUE);
         } catch (NumberFormatException e) {
             return -1;
         }

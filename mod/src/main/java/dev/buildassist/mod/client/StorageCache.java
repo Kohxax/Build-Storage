@@ -5,13 +5,14 @@ import dev.buildassist.mod.BuildAssistMod;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class StorageCache {
 
     public static final StorageCache INSTANCE = new StorageCache();
 
     private final Map<String, StorageEntry> entries = new ConcurrentHashMap<>();
-    private final List<Runnable> listeners = new ArrayList<>();
+    private final List<Runnable> listeners = new CopyOnWriteArrayList<>();
 
     private StorageCache() {}
 

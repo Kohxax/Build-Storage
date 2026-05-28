@@ -152,7 +152,7 @@ public class StoragePanel {
     private boolean isScrollbarDragging = false;
 
     private boolean suppressDepositOnRelease = false;
-    private boolean pendingShiftWithdraw = false;
+    private boolean pendingWithdraw = false;  // set on any withdraw; shortened by onStorageUpdate()
     private long withdrawLockUntil = 0;
 
     private final QuantityPickerOverlay quantityPicker = new QuantityPickerOverlay();
@@ -167,21 +167,11 @@ public class StoragePanel {
     }
 
     private void calculatePosition(HandledScreen screen) {
-        int invX, invY, bgW, bgH;
-        if (screen instanceof HandledScreenAccessor hs) {
-            invX = hs.getX() + config.getInventoryOffsetX();
-            invY = hs.getY() + config.getInventoryOffsetY();
-            bgW  = hs.getBackgroundWidth();
-            bgH  = hs.getBackgroundHeight();
-        } else {
-            MinecraftClient client = MinecraftClient.getInstance();
-            int sw = client.getWindow().getScaledWidth();
-            int sh = client.getWindow().getScaledHeight();
-            invX = (sw - 176) / 2 + config.getInventoryOffsetX();
-            invY = (sh - 166) / 2 + config.getInventoryOffsetY();
-            bgW  = 176;
-            bgH  = 166;
-        }
+        HandledScreenAccessor hs = (HandledScreenAccessor) screen;
+        int invX = hs.getX() + config.getInventoryOffsetX();
+        int invY = hs.getY() + config.getInventoryOffsetY();
+        int bgW  = hs.getBackgroundWidth();
+        int bgH  = hs.getBackgroundHeight();
 
         PanelSide side = config.getPanelSide();
         int baseX = switch (side) {
@@ -291,7 +281,10 @@ public class StoragePanel {
             String itemKey = entry.getItemKey();
             boolean isNbt = entry.getNbtData() != null;
 
-            if (!isNbt && (categorized.contains(itemKey) || blocked.contains(itemKey))) continue;
+            // Blocked items are excluded regardless of NBT.
+            // Non-NBT categorized items are shown in their own tab, not here.
+            if (blocked.contains(itemKey)) continue;
+            if (!isNbt && categorized.contains(itemKey)) continue;
 
             net.minecraft.item.Item item = Registries.ITEM.get(Identifier.of(itemKey));
             if (item == Items.AIR) continue;
@@ -344,22 +337,33 @@ public class StoragePanel {
         return blocked;
     }
 
+    private static Set<String> storableItemCache = null;
+
+    public static void clearStorableCache() {
+        storableItemCache = null;
+    }
+
     public static boolean isDepositBlocked(ItemStack stack) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.world == null) return false;
+        if (storableItemCache == null) {
+            storableItemCache = buildStorableItemIds(client);
+        }
+        return !storableItemCache.contains(Registries.ITEM.getId(stack.getItem()).toString());
+    }
+
+    private static Set<String> buildStorableItemIds(MinecraftClient client) {
+        Set<String> storable = new HashSet<>();
         var reg = client.world.getRegistryManager().getOptional(RegistryKeys.ITEM_GROUP);
-        if (reg.isEmpty()) return false;
-        String itemKey = Registries.ITEM.getId(stack.getItem()).toString();
+        if (reg.isEmpty()) return storable;
         for (RegistryKey<ItemGroup> key : STORABLE_TABS) {
             var group = reg.get().get(key);
             if (group == null) continue;
-            for (ItemStack tabStack : group.getDisplayStacks()) {
-                if (itemKey.equals(Registries.ITEM.getId(tabStack.getItem()).toString())) {
-                    return false;
-                }
+            for (ItemStack s : group.getDisplayStacks()) {
+                storable.add(Registries.ITEM.getId(s.getItem()).toString());
             }
         }
-        return true;
+        return storable;
     }
 
     // Builds an ItemStack with display components (name, enchantments, lore) applied from StorageEntry.
@@ -630,7 +634,7 @@ public class StoragePanel {
             if (!quantityPicker.isOpen()) {
                 suppressDepositOnRelease = true;
                 if (quantityPicker.wasLastShift()) {
-                    pendingShiftWithdraw = true;
+                    pendingWithdraw = true;
                     withdrawLockUntil = System.currentTimeMillis() + 1000;
                 }
             }
@@ -698,12 +702,12 @@ public class StoragePanel {
                 } else if (shift && button == 0) {
                     int amount = (int) Math.min((long) entry.displayStack.getItem().getMaxCount(), entry.count);
                     suppressDepositOnRelease = true;
-                    pendingShiftWithdraw = true;
+                    pendingWithdraw = true;
                     withdrawLockUntil = System.currentTimeMillis() + 1000;
                     ModMessaging.sendWithdraw(entry.itemKey, amount, true);
                 } else {
                     suppressDepositOnRelease = true;
-                    pendingShiftWithdraw = true;
+                    pendingWithdraw = true;
                     withdrawLockUntil = System.currentTimeMillis() + 1000;
                     ModMessaging.sendWithdraw(entry.itemKey, 1, false);
                 }
@@ -762,7 +766,7 @@ public class StoragePanel {
                 if (mc.player != null) {
                     ItemStack cursor = mc.player.currentScreenHandler.getCursorStack();
                     if (!cursor.isEmpty() && !isDepositBlocked(cursor)) {
-                        pendingShiftWithdraw = true;
+                        pendingWithdraw = true;
                         withdrawLockUntil = System.currentTimeMillis() + 1000;
                         ModMessaging.sendDeposit(
                             Registries.ITEM.getId(cursor.getItem()).toString(),
@@ -810,7 +814,7 @@ public class StoragePanel {
             if (!quantityPicker.isOpen()) {
                 suppressDepositOnRelease = true;
                 if (quantityPicker.wasLastShift()) {
-                    pendingShiftWithdraw = true;
+                    pendingWithdraw = true;
                     withdrawLockUntil = System.currentTimeMillis() + 1000;
                 }
             }
@@ -833,8 +837,8 @@ public class StoragePanel {
     }
 
     public void onStorageUpdate() {
-        if (pendingShiftWithdraw) {
-            pendingShiftWithdraw = false;
+        if (pendingWithdraw) {
+            pendingWithdraw = false;
             withdrawLockUntil = System.currentTimeMillis() + 50;
         }
         refreshSlots();

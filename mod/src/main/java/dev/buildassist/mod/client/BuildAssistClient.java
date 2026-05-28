@@ -15,6 +15,7 @@ import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
+import net.minecraft.client.gui.screen.ingame.ShulkerBoxScreen;
 
 public class BuildAssistClient implements ClientModInitializer {
 
@@ -29,6 +30,7 @@ public class BuildAssistClient implements ClientModInitializer {
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             StorageCache.INSTANCE.clear();
+            StoragePanel.clearStorableCache();
             pluginDetected = false;
             closePanel();
         });
@@ -77,7 +79,7 @@ public class BuildAssistClient implements ClientModInitializer {
         MinecraftClient mc = MinecraftClient.getInstance();
         Screen current = mc.currentScreen;
         if (activePanel == null
-                && (current instanceof InventoryScreen || current instanceof GenericContainerScreen)) {
+                && (current instanceof InventoryScreen || current instanceof GenericContainerScreen || current instanceof ShulkerBoxScreen)) {
             createPanel((HandledScreen) current);
         }
     }

@@ -179,15 +179,7 @@ public class HandledScreenMixin {
         ItemStack stack = slot.getStack();
         if (StoragePanel.isDepositBlocked(stack)) return;
         String itemKey = Registries.ITEM.getId(stack.getItem()).toString();
-        int amount = stack.getCount();
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.player != null) {
-            ItemStack cur = mc.player.currentScreenHandler.getCursorStack();
-            if (!cur.isEmpty() && cur.getItem() == stack.getItem()) {
-                amount += cur.getCount();
-            }
-        }
-        ModMessaging.sendDeposit(itemKey, amount);
+        ModMessaging.sendDeposit(itemKey, stack.getCount());
         ci.cancel();
     }
 
