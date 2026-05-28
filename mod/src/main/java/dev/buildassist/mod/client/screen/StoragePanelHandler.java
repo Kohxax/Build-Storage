@@ -70,7 +70,7 @@ public class StoragePanelHandler {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player == null) return;
         ItemStack held = client.player.getMainHandStack();
-        if (held.isEmpty()) return;
+        if (held.isEmpty() || StoragePanel.isDepositBlocked(held)) return;
         ModMessaging.sendDeposit(Registries.ITEM.getId(held.getItem()).toString(), held.getCount());
     }
 }

@@ -320,7 +320,7 @@ public class StoragePanel {
         return result;
     }
 
-    private Set<String> buildBlockedItemIds(MinecraftClient client) {
+    private static Set<String> buildBlockedItemIds(MinecraftClient client) {
         Set<String> blocked = new HashSet<>();
         if (client.world == null) return blocked;
         var reg = client.world.getRegistryManager().getOptional(RegistryKeys.ITEM_GROUP);
@@ -335,7 +335,7 @@ public class StoragePanel {
         return blocked;
     }
 
-    private boolean isDepositBlocked(ItemStack stack) {
+    public static boolean isDepositBlocked(ItemStack stack) {
         String itemKey = Registries.ITEM.getId(stack.getItem()).toString();
         return buildBlockedItemIds(MinecraftClient.getInstance()).contains(itemKey);
     }

@@ -10,6 +10,7 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
+import net.minecraft.client.gui.screen.ingame.ShulkerBoxScreen;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.registry.Registries;
@@ -41,12 +42,12 @@ public class HandledScreenMixin {
         BuildAssistClient.onInventoryClose();
     }
 
-    // Open panel for GenericContainerScreen (chest, ender chest, barrel, etc.)
+    // Open panel for GenericContainerScreen (chest, ender chest, barrel, etc.) and ShulkerBoxScreen.
     // InventoryScreen is handled by InventoryScreenMixin.
     @Inject(method = "init", at = @At("TAIL"))
     private void onHandledInit(CallbackInfo ci) {
         if ((Object) this instanceof InventoryScreen) return;
-        if ((Object) this instanceof GenericContainerScreen) {
+        if ((Object) this instanceof GenericContainerScreen || (Object) this instanceof ShulkerBoxScreen) {
             BuildAssistClient.onInventoryOpen((HandledScreen)(Object) this);
         }
     }
@@ -96,6 +97,7 @@ public class HandledScreenMixin {
         if (slot == null || slot.getStack().isEmpty()) return;
         if (!baCtrlDraggedSlots.add(slot.id)) return;
         ItemStack stack = slot.getStack();
+        if (StoragePanel.isDepositBlocked(stack)) return;
         ModMessaging.sendDeposit(Registries.ITEM.getId(stack.getItem()).toString(), stack.getCount());
     }
 
@@ -129,10 +131,12 @@ public class HandledScreenMixin {
                     double my = mc.mouse.getY() * mc.getWindow().getScaledHeight() / h;
                     StoragePanel panel = BuildAssistClient.getActivePanel();
                     if (panel != null && panel.isInsidePanel(mx, my)) {
-                        ModMessaging.sendDeposit(
-                            Registries.ITEM.getId(cursor.getItem()).toString(),
-                            cursor.getCount()
-                        );
+                        if (!StoragePanel.isDepositBlocked(cursor)) {
+                            ModMessaging.sendDeposit(
+                                Registries.ITEM.getId(cursor.getItem()).toString(),
+                                cursor.getCount()
+                            );
+                        }
                         ci.cancel();
                     }
                     return;
@@ -148,10 +152,12 @@ public class HandledScreenMixin {
             boolean ctrl = GLFW.glfwGetKey(win, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS
                         || GLFW.glfwGetKey(win, GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
             if (ctrl) {
-                String itemKey = Registries.ITEM.getId(slot.getStack().getItem()).toString();
-                int total = countItemsInInventory(itemKey);
-                if (total > 0) {
-                    ModMessaging.sendDeposit(itemKey, total);
+                if (!StoragePanel.isDepositBlocked(slot.getStack())) {
+                    String itemKey = Registries.ITEM.getId(slot.getStack().getItem()).toString();
+                    int total = countItemsInInventory(itemKey);
+                    if (total > 0) {
+                        ModMessaging.sendDeposit(itemKey, total);
+                    }
                 }
                 ci.cancel();
             }
@@ -171,6 +177,7 @@ public class HandledScreenMixin {
         baCtrlDraggedSlots.add(slotId);
 
         ItemStack stack = slot.getStack();
+        if (StoragePanel.isDepositBlocked(stack)) return;
         String itemKey = Registries.ITEM.getId(stack.getItem()).toString();
         int amount = stack.getCount();
         MinecraftClient mc = MinecraftClient.getInstance();
