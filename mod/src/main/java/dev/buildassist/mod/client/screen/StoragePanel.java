@@ -11,7 +11,8 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.ingame.InventoryScreen;
+import net.minecraft.client.gui.screen.ingame.HandledScreen;
+import dev.buildassist.mod.mixin.HandledScreenAccessor;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.client.input.CharInput;
 import net.minecraft.client.input.KeyInput;
@@ -147,33 +148,43 @@ public class StoragePanel {
 
     private final QuantityPickerOverlay quantityPicker = new QuantityPickerOverlay();
 
-    public StoragePanel(InventoryScreen inventoryScreen, BuildAssistConfig config) {
+    public StoragePanel(HandledScreen screen, BuildAssistConfig config) {
         this.cache = StorageCache.INSTANCE;
         this.config = config;
-        calculatePosition(inventoryScreen);
+        calculatePosition(screen);
         initTabs();
         buildSearchField();
         refreshSlots();
     }
 
-    private void calculatePosition(InventoryScreen screen) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        int sw = client.getWindow().getScaledWidth();
-        int sh = client.getWindow().getScaledHeight();
-        int invX = (sw - 176) / 2 + config.getInventoryOffsetX();
-        int invY = (sh - 166) / 2 + config.getInventoryOffsetY();
+    private void calculatePosition(HandledScreen screen) {
+        int invX, invY, bgW, bgH;
+        if (screen instanceof HandledScreenAccessor hs) {
+            invX = hs.getX() + config.getInventoryOffsetX();
+            invY = hs.getY() + config.getInventoryOffsetY();
+            bgW  = hs.getBackgroundWidth();
+            bgH  = hs.getBackgroundHeight();
+        } else {
+            MinecraftClient client = MinecraftClient.getInstance();
+            int sw = client.getWindow().getScaledWidth();
+            int sh = client.getWindow().getScaledHeight();
+            invX = (sw - 176) / 2 + config.getInventoryOffsetX();
+            invY = (sh - 166) / 2 + config.getInventoryOffsetY();
+            bgW  = 176;
+            bgH  = 166;
+        }
 
         PanelSide side = config.getPanelSide();
         int baseX = switch (side) {
             case LEFT  -> invX - PANEL_WIDTH - 4 + config.getPanelOffsetX();
-            case RIGHT -> invX + 176 + 4 + config.getPanelOffsetX();
+            case RIGHT -> invX + bgW + 4 + config.getPanelOffsetX();
             case UP    -> invX + config.getPanelOffsetX();
             case DOWN  -> invX + config.getPanelOffsetX();
         };
         int baseY = switch (side) {
             case LEFT, RIGHT -> invY + TAB_Y_OFFSET + config.getPanelOffsetY();
             case UP          -> invY - PANEL_HEIGHT - TAB_Y_OFFSET - 4 + config.getPanelOffsetY();
-            case DOWN        -> invY + 166 + TAB_Y_OFFSET + 4 + config.getPanelOffsetY();
+            case DOWN        -> invY + bgH + TAB_Y_OFFSET + 4 + config.getPanelOffsetY();
         };
         this.panelX = baseX;
         this.panelY = baseY;

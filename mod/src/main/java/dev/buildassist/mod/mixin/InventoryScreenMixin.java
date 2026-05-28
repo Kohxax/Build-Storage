@@ -17,7 +17,7 @@ public class InventoryScreenMixin {
 
     @Inject(method = "init", at = @At("TAIL"))
     private void onInit(CallbackInfo ci) {
-        BuildAssistClient.onInventoryOpen((InventoryScreen) (Object) this);
+        BuildAssistClient.onInventoryOpen((InventoryScreen)(Object) this);
     }
 
     @Inject(method = "render", at = @At("TAIL"))

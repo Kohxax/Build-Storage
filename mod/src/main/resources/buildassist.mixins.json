@@ -6,6 +6,7 @@
   "client": [
     "InventoryScreenMixin",
     "HandledScreenMixin",
+    "HandledScreenAccessor",
     "ScreenCharMixin"
   ],
   "injectors": {

@@ -11,6 +11,9 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
+import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 
 public class BuildAssistClient implements ClientModInitializer {
@@ -39,7 +42,7 @@ public class BuildAssistClient implements ClientModInitializer {
         });
     }
 
-    public static void onInventoryOpen(InventoryScreen screen) {
+    public static void onInventoryOpen(HandledScreen screen) {
         closePanel();
         ModMessaging.sendOpenStorage();
 
@@ -72,12 +75,14 @@ public class BuildAssistClient implements ClientModInitializer {
     public static void onStorageContentsReceived() {
         pluginDetected = true;
         MinecraftClient mc = MinecraftClient.getInstance();
-        if (activePanel == null && mc.currentScreen instanceof InventoryScreen inv) {
-            createPanel(inv);
+        Screen current = mc.currentScreen;
+        if (activePanel == null
+                && (current instanceof InventoryScreen || current instanceof GenericContainerScreen)) {
+            createPanel((HandledScreen) current);
         }
     }
 
-    private static void createPanel(InventoryScreen screen) {
+    private static void createPanel(HandledScreen screen) {
         activePanel = new StoragePanel(screen, BuildAssistConfig.get());
         activePanelListener = activePanel::onStorageUpdate;
         StorageCache.INSTANCE.addListener(activePanelListener);
