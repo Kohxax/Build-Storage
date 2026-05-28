@@ -5,6 +5,7 @@ import dev.buildassist.mod.client.render.ItemCountRenderer;
 import dev.buildassist.mod.client.screen.StoragePanel;
 import dev.buildassist.mod.network.ModMessaging;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
@@ -71,8 +72,8 @@ public class HandledScreenMixin {
 
     // Start Ctrl+drag session when Ctrl+LMB is pressed with panel open.
     @Inject(method = "mouseClicked", at = @At("HEAD"))
-    private void onCtrlDragStart(double mouseX, double mouseY, int button, CallbackInfoReturnable<Boolean> cir) {
-        if (button != 0 || BuildAssistClient.getActivePanel() == null) return;
+    private void onCtrlDragStart(Click click, boolean doubled, CallbackInfoReturnable<Boolean> cir) {
+        if (click.button() != 0 || BuildAssistClient.getActivePanel() == null) return;
         long win = MinecraftClient.getInstance().getWindow().getHandle();
         boolean ctrl = GLFW.glfwGetKey(win, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS
                     || GLFW.glfwGetKey(win, GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
@@ -84,14 +85,14 @@ public class HandledScreenMixin {
 
     // Deposit each new player-inventory slot entered during Ctrl+drag.
     @Inject(method = "mouseDragged", at = @At("HEAD"))
-    private void onCtrlDrag(double mouseX, double mouseY, int button, double deltaX, double deltaY, CallbackInfoReturnable<Boolean> cir) {
-        if (!baCtrlDragging || button != 0) return;
+    private void onCtrlDrag(Click click, double offsetX, double offsetY, CallbackInfoReturnable<Boolean> cir) {
+        if (!baCtrlDragging || click.button() != 0) return;
         if (BuildAssistClient.getActivePanel() == null) { baCtrlDragging = false; return; }
         long win = MinecraftClient.getInstance().getWindow().getHandle();
         boolean ctrl = GLFW.glfwGetKey(win, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS
                     || GLFW.glfwGetKey(win, GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
         if (!ctrl) { baCtrlDragging = false; return; }
-        Slot slot = getSlotAt(mouseX, mouseY);
+        Slot slot = getSlotAt(click.x(), click.y());
         if (slot == null || slot.getStack().isEmpty()) return;
         if (!(slot.inventory instanceof PlayerInventory)) return;
         if (!baCtrlDraggedSlots.add(slot.id)) return;
@@ -101,8 +102,8 @@ public class HandledScreenMixin {
 
     // End Ctrl+drag session on mouse release.
     @Inject(method = "mouseReleased", at = @At("HEAD"))
-    private void onCtrlDragEnd(double mouseX, double mouseY, int button, CallbackInfoReturnable<Boolean> cir) {
-        if (button == 0) {
+    private void onCtrlDragEnd(Click click, CallbackInfoReturnable<Boolean> cir) {
+        if (click.button() == 0) {
             baCtrlDragging = false;
             baCtrlDraggedSlots.clear();
         }
