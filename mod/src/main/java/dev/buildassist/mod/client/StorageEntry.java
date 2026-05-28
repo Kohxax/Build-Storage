@@ -8,7 +8,7 @@ public class StorageEntry {
 
     private final String itemKey;
     private final String nbtData;
-    private long count;
+    private final long count;
     private final String displayName;
     private final List<EnchantEntry> enchants;
     private final List<String> lore;
@@ -23,11 +23,10 @@ public class StorageEntry {
         this.lore        = lore    != null ? List.copyOf(lore)    : List.of();
     }
 
-    public String getItemKey()         { return itemKey; }
-    public String getNbtData()         { return nbtData; }
-    public long   getCount()           { return count; }
-    public void   setCount(long count) { this.count = count; }
-    public String getDisplayName()     { return displayName; }
+    public String getItemKey()     { return itemKey; }
+    public String getNbtData()     { return nbtData; }
+    public long   getCount()       { return count; }
+    public String getDisplayName() { return displayName; }
     public List<EnchantEntry> getEnchants() { return enchants; }
     public List<String> getLore()      { return lore; }
 

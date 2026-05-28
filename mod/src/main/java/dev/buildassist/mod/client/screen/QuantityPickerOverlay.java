@@ -219,18 +219,7 @@ public class QuantityPickerOverlay {
 
     public boolean charTyped(CharInput charInput) {
         if (!open || amountField == null) return false;
-        if (amountField.charTyped(charInput)) return true;
-        if (charInput.isValidChar()) {
-            String s = charInput.asString();
-            if (s.matches("[0-9]")) {
-                int cursor = amountField.getCursor();
-                String current = amountField.getText();
-                amountField.setText(current.substring(0, cursor) + s + current.substring(cursor));
-                amountField.setCursorToEnd(false);
-                return true;
-            }
-        }
-        return false;
+        return amountField.charTyped(charInput);
     }
 
     public boolean keyPressed(KeyInput keyInput) {

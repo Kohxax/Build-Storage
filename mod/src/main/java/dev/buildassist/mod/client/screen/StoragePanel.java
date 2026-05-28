@@ -801,17 +801,7 @@ public class StoragePanel {
         if (!tabKeys.get(currentTabIndex).equals(SEARCH_KEY)) return false;
         if (!searchField.isFocused()) searchField.setFocused(true);
 
-        if (searchField.charTyped(charInput)) return true;
-
-        if (charInput.isValidChar()) {
-            int cursor = searchField.getCursor();
-            String current = searchField.getText();
-            String next = current.substring(0, cursor) + charInput.asString() + current.substring(cursor);
-            searchField.setText(next);
-            searchField.setCursorToEnd(false);
-            return true;
-        }
-        return false;
+        return searchField.charTyped(charInput);
     }
 
     public boolean keyPressed(KeyInput keyInput) {

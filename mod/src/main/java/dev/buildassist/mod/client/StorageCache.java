@@ -67,13 +67,6 @@ public class StorageCache {
             .sum();
     }
 
-    public long getCountAll(String itemKey) {
-        return entries.values().stream()
-            .filter(e -> e.getItemKey().equals(itemKey))
-            .mapToLong(StorageEntry::getCount)
-            .sum();
-    }
-
     public Collection<StorageEntry> getAll() {
         return Collections.unmodifiableCollection(entries.values());
     }
