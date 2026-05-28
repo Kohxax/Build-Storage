@@ -9,6 +9,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.messaging.PluginMessageListener;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import java.io.*;
@@ -65,47 +66,52 @@ public class PluginMessaging implements PluginMessageListener {
             if (mat == null) return;
 
             int maxStack = mat.getMaxStackSize();
-            int remaining = amount;
 
-            // Iterate all storage entries for this item (covers all NBT variants)
-            List<StorageItem> allItems = storage.getAll();
-            for (StorageItem si : allItems) {
-                if (remaining <= 0) break;
-                if (!si.getItemKey().equals(itemKey)) continue;
+            // DB reads and writes on async thread; inventory changes back on main thread.
+            plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+                List<StorageItem> allItems = storage.getAll();
+                int remaining = amount;
 
-                long take = Math.min(remaining, si.getCount());
-                if (!storage.withdraw(itemKey, si.getNbtData(), take)) continue;
+                record WithdrawnBatch(String nbt, int count) {}
+                List<WithdrawnBatch> batches = new ArrayList<>();
 
-                int left = (int) take;
-                while (left > 0) {
-                    int batch = Math.min(maxStack, left);
-                    ItemStack item = reconstructItem(mat, batch, si.getNbtData());
-                    if (shift) {
-                        player.getInventory().addItem(item)
-                            .forEach((s, leftover) -> player.getWorld().dropItemNaturally(player.getLocation(), leftover));
-                    } else {
-                        // Place on cursor like vanilla left-click
-                        ItemStack cursor = player.getItemOnCursor();
-                        if (cursor == null || cursor.getType().isAir()) {
-                            player.setItemOnCursor(item);
-                        } else if (cursor.isSimilar(item) && cursor.getAmount() + batch <= maxStack) {
-                            cursor.setAmount(cursor.getAmount() + batch);
-                            player.setItemOnCursor(cursor);
-                        } else {
-                            player.getInventory().addItem(item)
-                                .forEach((s, leftover) -> player.getWorld().dropItemNaturally(player.getLocation(), leftover));
+                for (StorageItem si : allItems) {
+                    if (remaining <= 0) break;
+                    if (!si.getItemKey().equals(itemKey)) continue;
+                    long take = Math.min(remaining, si.getCount());
+                    if (!storage.withdraw(itemKey, si.getNbtData(), take)) continue;
+                    batches.add(new WithdrawnBatch(si.getNbtData(), (int) take));
+                    remaining -= (int) take;
+                }
+
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    for (WithdrawnBatch b : batches) {
+                        int left = b.count();
+                        while (left > 0) {
+                            int batch = Math.min(maxStack, left);
+                            ItemStack item = reconstructItem(mat, batch, b.nbt());
+                            if (shift) {
+                                player.getInventory().addItem(item)
+                                    .forEach((s, leftover) -> player.getWorld().dropItemNaturally(player.getLocation(), leftover));
+                            } else {
+                                ItemStack cursor = player.getItemOnCursor();
+                                if (cursor == null || cursor.getType().isAir()) {
+                                    player.setItemOnCursor(item);
+                                } else if (cursor.isSimilar(item) && cursor.getAmount() + batch <= maxStack) {
+                                    cursor.setAmount(cursor.getAmount() + batch);
+                                    player.setItemOnCursor(cursor);
+                                } else {
+                                    player.getInventory().addItem(item)
+                                        .forEach((s, leftover) -> player.getWorld().dropItemNaturally(player.getLocation(), leftover));
+                                }
+                            }
+                            left -= batch;
                         }
                     }
-                    left -= batch;
-                }
-                remaining -= (int) take;
-            }
-            // Force immediate inventory sync so the client receives the correct
-            // revision before any subsequent ClickSlot. Without this, inventory
-            // changes delay SetSlot to end-of-tick, causing a revision mismatch
-            // that makes the first inventory click after any operation fail.
-            player.updateInventory();
-            sendStorageUpdate(player, storage);
+                    player.updateInventory();
+                    sendStorageUpdate(player, storage);
+                });
+            });
         } catch (Exception e) {
             plugin.getLogger().warning("Withdraw error for " + player.getName() + ": " + e.getMessage());
         }
@@ -120,26 +126,27 @@ public class PluginMessaging implements PluginMessageListener {
             PlayerStorage storage = storageManager.get(player);
             int remaining = amount;
 
-            // Deposit cursor item first (preserves NBT)
+            // Collect deposit entries on main thread (inventory mutation + NBT serialization).
+            record DepositEntry(String key, String nbt, int count) {}
+            List<DepositEntry> entries = new java.util.ArrayList<>();
+
+            // Cursor item first (preserves NBT)
             ItemStack cursor = player.getItemOnCursor();
             if (cursor != null && !cursor.getType().isAir()
                     && cursor.getType().getKey().toString().equals(itemKey)) {
                 int take = Math.min(cursor.getAmount(), remaining);
-                ItemStack toDeposit = cursor.clone();
-                toDeposit.setAmount(take);
-                if (storage.deposit(toDeposit)) {
-                    int newCursorAmount = cursor.getAmount() - take;
-                    if (newCursorAmount <= 0) {
-                        player.setItemOnCursor(new ItemStack(Material.AIR));
-                    } else {
-                        cursor.setAmount(newCursorAmount);
-                        player.setItemOnCursor(cursor);
-                    }
-                    remaining -= take;
+                entries.add(new DepositEntry(itemKey, serializeItemNbt(cursor), take));
+                int newAmt = cursor.getAmount() - take;
+                if (newAmt <= 0) {
+                    player.setItemOnCursor(new ItemStack(Material.AIR));
+                } else {
+                    cursor.setAmount(newAmt);
+                    player.setItemOnCursor(cursor);
                 }
+                remaining -= take;
             }
 
-            // Then deposit from player inventory slots (preserves NBT per slot)
+            // Player inventory slots
             if (remaining > 0) {
                 ItemStack[] contents = player.getInventory().getContents();
                 for (int i = 0; i < contents.length && remaining > 0; i++) {
@@ -147,21 +154,18 @@ public class PluginMessaging implements PluginMessageListener {
                     if (slot == null || slot.getType().isAir()) continue;
                     if (!slot.getType().getKey().toString().equals(itemKey)) continue;
                     int take = Math.min(slot.getAmount(), remaining);
-                    ItemStack toDeposit = slot.clone();
-                    toDeposit.setAmount(take);
-                    if (storage.deposit(toDeposit)) {
-                        int newSlotAmount = slot.getAmount() - take;
-                        if (newSlotAmount <= 0) {
-                            player.getInventory().setItem(i, new ItemStack(Material.AIR));
-                        } else {
-                            slot.setAmount(newSlotAmount);
-                        }
-                        remaining -= take;
+                    entries.add(new DepositEntry(itemKey, serializeItemNbt(slot), take));
+                    int newAmt = slot.getAmount() - take;
+                    if (newAmt <= 0) {
+                        player.getInventory().setItem(i, new ItemStack(Material.AIR));
+                    } else {
+                        slot.setAmount(newAmt);
                     }
+                    remaining -= take;
                 }
             }
 
-            // Also deposit from the open container (chest, barrel, etc.)
+            // Open container (chest, barrel, etc.)
             if (remaining > 0) {
                 org.bukkit.inventory.Inventory top = player.getOpenInventory().getTopInventory();
                 ItemStack[] topContents = top.getContents();
@@ -170,25 +174,40 @@ public class PluginMessaging implements PluginMessageListener {
                     if (slot == null || slot.getType().isAir()) continue;
                     if (!slot.getType().getKey().toString().equals(itemKey)) continue;
                     int take = Math.min(slot.getAmount(), remaining);
-                    ItemStack toDeposit = slot.clone();
-                    toDeposit.setAmount(take);
-                    if (storage.deposit(toDeposit)) {
-                        int newSlotAmount = slot.getAmount() - take;
-                        if (newSlotAmount <= 0) {
-                            top.setItem(i, new ItemStack(Material.AIR));
-                        } else {
-                            slot.setAmount(newSlotAmount);
-                        }
-                        remaining -= take;
+                    entries.add(new DepositEntry(itemKey, serializeItemNbt(slot), take));
+                    int newAmt = slot.getAmount() - take;
+                    if (newAmt <= 0) {
+                        top.setItem(i, new ItemStack(Material.AIR));
+                    } else {
+                        slot.setAmount(newAmt);
                     }
+                    remaining -= take;
                 }
             }
 
             player.updateInventory();
-            sendStorageUpdate(player, storage);
+
+            if (entries.isEmpty()) return;
+
+            // DB writes on async thread to avoid blocking the server tick.
+            plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+                for (DepositEntry e : entries) {
+                    storage.depositRaw(e.key(), e.nbt(), e.count());
+                }
+                plugin.getServer().getScheduler().runTask(plugin, () ->
+                    sendStorageUpdate(player, storage));
+            });
         } catch (Exception e) {
             plugin.getLogger().warning("Deposit error for " + player.getName() + ": " + e.getMessage());
         }
+    }
+
+    private static String serializeItemNbt(ItemStack item) {
+        if (!item.hasItemMeta()) return null;
+        org.bukkit.configuration.file.YamlConfiguration cfg =
+            new org.bukkit.configuration.file.YamlConfiguration();
+        cfg.set("i", item);
+        return cfg.saveToString();
     }
 
     private ItemStack reconstructItem(Material mat, int amount, String nbtData) {

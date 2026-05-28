@@ -32,6 +32,10 @@ public class PlayerStorage {
         return database.adjustCount(playerUuid, key, serialized, item.getAmount());
     }
 
+    public boolean depositRaw(String itemKey, String nbtData, int amount) {
+        return database.adjustCount(playerUuid, itemKey, nbtData, amount);
+    }
+
     public long getTotalCount(String itemKey) {
         return database.getTotalCount(playerUuid, itemKey);
     }

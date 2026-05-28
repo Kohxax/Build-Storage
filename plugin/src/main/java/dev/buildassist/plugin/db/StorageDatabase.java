@@ -20,6 +20,11 @@ public class StorageDatabase {
         try {
             connection = DriverManager.getConnection("jdbc:sqlite:" + new File(dataFolder, "storage.db").getAbsolutePath());
             try (Statement stmt = connection.createStatement()) {
+                // WAL mode: writes append to WAL file instead of flushing main db on every write.
+                // synchronous=NORMAL: only sync at WAL checkpoints, not on every write.
+                // Both together prevent the main server thread from blocking on disk I/O.
+                stmt.execute("PRAGMA journal_mode=WAL");
+                stmt.execute("PRAGMA synchronous=NORMAL");
                 stmt.execute("""
                     CREATE TABLE IF NOT EXISTS player_storage (
                         id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,7 +52,7 @@ public class StorageDatabase {
         }
     }
 
-    public List<StorageItem> getItems(UUID playerUuid) {
+    public synchronized List<StorageItem> getItems(UUID playerUuid) {
         List<StorageItem> items = new ArrayList<>();
         try (PreparedStatement ps = connection.prepareStatement(
                 "SELECT item_key, nbt_data, count FROM player_storage WHERE player_uuid = ? AND count > 0")) {
@@ -63,7 +68,7 @@ public class StorageDatabase {
         return items;
     }
 
-    public long getCount(UUID playerUuid, String itemKey, String nbtData) {
+    public synchronized long getCount(UUID playerUuid, String itemKey, String nbtData) {
         try (PreparedStatement ps = connection.prepareStatement(
                 "SELECT count FROM player_storage WHERE player_uuid = ? AND item_key = ? AND (nbt_data IS ? OR nbt_data = ?)")) {
             ps.setString(1, playerUuid.toString());
@@ -79,7 +84,7 @@ public class StorageDatabase {
         return 0;
     }
 
-    public long getTotalCount(UUID playerUuid, String itemKey) {
+    public synchronized long getTotalCount(UUID playerUuid, String itemKey) {
         try (PreparedStatement ps = connection.prepareStatement(
                 "SELECT COALESCE(SUM(count), 0) FROM player_storage WHERE player_uuid = ? AND item_key = ? AND count > 0")) {
             ps.setString(1, playerUuid.toString());
@@ -94,7 +99,7 @@ public class StorageDatabase {
     }
 
     // Adds (positive delta) or removes (negative delta) items. Returns false if insufficient stock.
-    public boolean adjustCount(UUID playerUuid, String itemKey, String nbtData, long delta) {
+    public synchronized boolean adjustCount(UUID playerUuid, String itemKey, String nbtData, long delta) {
         try {
             if (delta > 0) {
                 return deposit(playerUuid, itemKey, nbtData, delta);
